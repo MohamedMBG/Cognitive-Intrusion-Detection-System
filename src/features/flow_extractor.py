@@ -1,0 +1,343 @@
+"""CICFlowMeter-compatible flow feature extractor.
+
+Reconstructs bidirectional flows from raw Scapy packets and computes
+the 78 features expected by the ML-IDS supervised model.
+
+Flow key: (src_ip, dst_ip, src_port, dst_port, protocol)
+The initiator is determined by the first packet seen.
+"""
+
+import time
+import threading
+import numpy as np
+from collections import defaultdict
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
+
+from scapy.all import IP, TCP, UDP, ICMP
+
+from ..config import (
+    FLOW_TIMEOUT, MAX_ACTIVE_FLOWS, ACTIVE_IDLE_THRESH, COMMON_PORTS
+)
+
+# 78 feature names matching ML-IDS PredictionRequest fields
+FLOW_FEATURE_NAMES = [
+    "flow_duration", "tot_fwd_pkts", "tot_bwd_pkts",
+    "totlen_fwd_pkts", "totlen_bwd_pkts",
+    "fwd_pkt_len_max", "fwd_pkt_len_min", "fwd_pkt_len_mean", "fwd_pkt_len_std",
+    "bwd_pkt_len_max", "bwd_pkt_len_min", "bwd_pkt_len_mean", "bwd_pkt_len_std",
+    "flow_byts_s", "flow_pkts_s",
+    "flow_iat_mean", "flow_iat_std", "flow_iat_max", "flow_iat_min",
+    "fwd_iat_tot", "fwd_iat_mean", "fwd_iat_std", "fwd_iat_max", "fwd_iat_min",
+    "bwd_iat_tot", "bwd_iat_mean", "bwd_iat_std", "bwd_iat_max", "bwd_iat_min",
+    "fwd_psh_flags", "bwd_psh_flags", "fwd_urg_flags", "bwd_urg_flags",
+    "fwd_header_len", "bwd_header_len",
+    "fwd_pkts_s", "bwd_pkts_s",
+    "pkt_len_min", "pkt_len_max", "pkt_len_mean", "pkt_len_std", "pkt_len_var",
+    "fin_flag_cnt", "syn_flag_cnt", "rst_flag_cnt", "psh_flag_cnt",
+    "ack_flag_cnt", "urg_flag_cnt", "cwr_flag_count", "ece_flag_cnt",
+    "down_up_ratio", "pkt_size_avg",
+    "fwd_seg_size_avg", "bwd_seg_size_avg",
+    "fwd_byts_b_avg", "fwd_pkts_b_avg", "fwd_blk_rate_avg",
+    "bwd_byts_b_avg", "bwd_pkts_b_avg", "bwd_blk_rate_avg",
+    "subflow_fwd_pkts", "subflow_fwd_byts",
+    "subflow_bwd_pkts", "subflow_bwd_byts",
+    "init_fwd_win_byts", "init_bwd_win_byts",
+    "fwd_act_data_pkts", "fwd_seg_size_min",
+    "active_mean", "active_std", "active_max", "active_min",
+    "idle_mean", "idle_std", "idle_max", "idle_min",
+]
+
+FlowKey = Tuple[str, str, int, int, int]  # src_ip, dst_ip, sport, dport, proto
+
+
+@dataclass
+class FlowRecord:
+    """Accumulates per-packet data for a single bidirectional flow."""
+
+    key: FlowKey
+    start_time: float = 0.0
+    last_time: float = 0.0
+
+    # Directional packet lists
+    fwd_lengths: List[int] = field(default_factory=list)
+    bwd_lengths: List[int] = field(default_factory=list)
+    fwd_times: List[float] = field(default_factory=list)
+    bwd_times: List[float] = field(default_factory=list)
+
+    # Header lengths
+    fwd_header_len: int = 0
+    bwd_header_len: int = 0
+
+    # TCP flags (cumulative counts across all packets)
+    fin: int = 0
+    syn: int = 0
+    rst: int = 0
+    psh: int = 0
+    ack: int = 0
+    urg: int = 0
+    cwe: int = 0
+    ece: int = 0
+
+    # Directional PSH/URG
+    fwd_psh: int = 0
+    bwd_psh: int = 0
+    fwd_urg: int = 0
+    bwd_urg: int = 0
+
+    # Initial window sizes
+    init_fwd_win: int = -1
+    init_bwd_win: int = -1
+
+    # Forward packets with actual payload
+    fwd_act_data_pkts: int = 0
+
+    # Active / idle period tracking
+    _last_active: float = 0.0
+    active_periods: List[float] = field(default_factory=list)
+    idle_periods: List[float] = field(default_factory=list)
+    _current_active_start: float = 0.0
+
+    def add_packet(self, packet, timestamp: float, is_forward: bool) -> None:
+        pkt_len = len(packet)
+        ip = packet[IP]
+        proto = ip.proto
+
+        if self.start_time == 0.0:
+            self.start_time = timestamp
+            self._last_active = timestamp
+            self._current_active_start = timestamp
+        else:
+            gap = timestamp - self.last_time
+            if gap > ACTIVE_IDLE_THRESH:
+                # Record active period that just ended
+                active_dur = self.last_time - self._current_active_start
+                if active_dur > 0:
+                    self.active_periods.append(active_dur)
+                self.idle_periods.append(gap)
+                self._current_active_start = timestamp
+
+        self.last_time = timestamp
+
+        if is_forward:
+            self.fwd_lengths.append(pkt_len)
+            self.fwd_times.append(timestamp)
+            hdr_len = ip.ihl * 4 if hasattr(ip, 'ihl') else 20
+            self.fwd_header_len += hdr_len
+        else:
+            self.bwd_lengths.append(pkt_len)
+            self.bwd_times.append(timestamp)
+            hdr_len = ip.ihl * 4 if hasattr(ip, 'ihl') else 20
+            self.bwd_header_len += hdr_len
+
+        # TCP flags
+        if TCP in packet:
+            tcp = packet[TCP]
+            flags = tcp.flags
+            self.fin += int(bool(flags & 0x01))
+            self.syn += int(bool(flags & 0x02))
+            self.rst += int(bool(flags & 0x04))
+            self.psh += int(bool(flags & 0x08))
+            self.ack += int(bool(flags & 0x10))
+            self.urg += int(bool(flags & 0x20))
+            self.ece += int(bool(flags & 0x40))
+            self.cwe += int(bool(flags & 0x80))
+
+            if is_forward:
+                self.fwd_psh += int(bool(flags & 0x08))
+                self.fwd_urg += int(bool(flags & 0x20))
+                if self.init_fwd_win < 0:
+                    self.init_fwd_win = tcp.window
+            else:
+                self.bwd_psh += int(bool(flags & 0x08))
+                self.bwd_urg += int(bool(flags & 0x20))
+                if self.init_bwd_win < 0:
+                    self.init_bwd_win = tcp.window
+
+            # Payload data
+            if is_forward and tcp.payload and len(bytes(tcp.payload)) > 0:
+                self.fwd_act_data_pkts += 1
+
+    def to_feature_vector(self) -> Optional[np.ndarray]:
+        """Compute all 78 features. Returns None if insufficient data."""
+        all_pkts = self.fwd_lengths + self.bwd_lengths
+        if len(all_pkts) < 2:
+            return None
+
+        duration = max(self.last_time - self.start_time, 1e-6)
+
+        # --- Directional counts / lengths ---
+        n_fwd = len(self.fwd_lengths)
+        n_bwd = len(self.bwd_lengths)
+        tot_fwd_bytes = sum(self.fwd_lengths)
+        tot_bwd_bytes = sum(self.bwd_lengths)
+
+        def _stats(vals):
+            if not vals:
+                return 0.0, 0.0, 0.0, 0.0
+            a = np.array(vals, dtype=float)
+            return float(a.max()), float(a.min()), float(a.mean()), float(a.std())
+
+        def _iat_stats(times):
+            if len(times) < 2:
+                return 0.0, 0.0, 0.0, 0.0, 0.0
+            iats = np.diff(np.array(times))
+            return float(iats.sum()), float(iats.mean()), float(iats.std()), \
+                   float(iats.max()), float(iats.min())
+
+        fwd_max, fwd_min, fwd_mean, fwd_std = _stats(self.fwd_lengths)
+        bwd_max, bwd_min, bwd_mean, bwd_std = _stats(self.bwd_lengths)
+
+        all_times = sorted(self.fwd_times + self.bwd_times)
+        _, flow_iat_mean, flow_iat_std, flow_iat_max, flow_iat_min = _iat_stats(all_times)
+
+        fwd_iat_tot, fwd_iat_mean, fwd_iat_std, fwd_iat_max, fwd_iat_min = _iat_stats(self.fwd_times)
+        bwd_iat_tot, bwd_iat_mean, bwd_iat_std, bwd_iat_max, bwd_iat_min = _iat_stats(self.bwd_times)
+
+        all_arr = np.array(all_pkts, dtype=float)
+        pkt_min, pkt_max, pkt_mean, pkt_std = float(all_arr.min()), float(all_arr.max()), \
+                                               float(all_arr.mean()), float(all_arr.std())
+
+        # Active/idle
+        def _period_stats(periods):
+            if not periods:
+                return 0.0, 0.0, 0.0, 0.0
+            a = np.array(periods)
+            return float(a.mean()), float(a.std()), float(a.max()), float(a.min())
+
+        # Close out current active period
+        periods = self.active_periods.copy()
+        last_act = self.last_time - self._current_active_start
+        if last_act > 0:
+            periods.append(last_act)
+        act_mean, act_std, act_max, act_min = _period_stats(periods)
+        idl_mean, idl_std, idl_max, idl_min = _period_stats(self.idle_periods)
+
+        fwd_seg_min = float(min(self.fwd_lengths)) if self.fwd_lengths else 0.0
+
+        features = [
+            duration,
+            float(n_fwd), float(n_bwd),
+            float(tot_fwd_bytes), float(tot_bwd_bytes),
+            fwd_max, fwd_min, fwd_mean, fwd_std,
+            bwd_max, bwd_min, bwd_mean, bwd_std,
+            (tot_fwd_bytes + tot_bwd_bytes) / duration,   # flow_byts_s
+            (n_fwd + n_bwd) / duration,                   # flow_pkts_s
+            flow_iat_mean, flow_iat_std, flow_iat_max, flow_iat_min,
+            fwd_iat_tot, fwd_iat_mean, fwd_iat_std, fwd_iat_max, fwd_iat_min,
+            bwd_iat_tot, bwd_iat_mean, bwd_iat_std, bwd_iat_max, bwd_iat_min,
+            float(self.fwd_psh), float(self.bwd_psh),
+            float(self.fwd_urg), float(self.bwd_urg),
+            float(self.fwd_header_len), float(self.bwd_header_len),
+            n_fwd / duration, n_bwd / duration,
+            pkt_min, pkt_max, pkt_mean, pkt_std, float(np.var(all_arr)),
+            float(self.fin), float(self.syn), float(self.rst), float(self.psh),
+            float(self.ack), float(self.urg), float(self.cwe), float(self.ece),
+            float(n_bwd) / max(n_fwd, 1),               # down_up_ratio
+            pkt_mean,                                    # pkt_size_avg
+            fwd_mean, bwd_mean,                          # seg_size_avg
+            float(tot_fwd_bytes), float(n_fwd), tot_fwd_bytes / duration,   # bulk fwd
+            float(tot_bwd_bytes), float(n_bwd), tot_bwd_bytes / duration,   # bulk bwd
+            float(n_fwd), float(tot_fwd_bytes),          # subflow fwd
+            float(n_bwd), float(tot_bwd_bytes),          # subflow bwd
+            float(max(self.init_fwd_win, 0)),
+            float(max(self.init_bwd_win, 0)),
+            float(self.fwd_act_data_pkts),
+            fwd_seg_min,
+            act_mean, act_std, act_max, act_min,
+            idl_mean, idl_std, idl_max, idl_min,
+        ]
+
+        assert len(features) == 78, f"Expected 78, got {len(features)}"
+        return np.array(features, dtype=np.float32)
+
+    @property
+    def src_ip(self) -> str:
+        return self.key[0]
+
+    @property
+    def dst_ip(self) -> str:
+        return self.key[1]
+
+
+class FlowExtractor:
+    """Tracks active flows and emits feature vectors when flows expire."""
+
+    def __init__(self):
+        self._flows: Dict[FlowKey, FlowRecord] = {}
+        self._lock = threading.RLock()
+
+    def _get_flow_key(self, packet) -> Optional[Tuple[FlowKey, bool]]:
+        """Return (flow_key, is_forward) or None if not IP."""
+        if IP not in packet:
+            return None
+        ip = packet[IP]
+        src, dst = ip.src, ip.dst
+        proto = ip.proto
+        sport, dport = 0, 0
+
+        if TCP in packet:
+            sport, dport = packet[TCP].sport, packet[TCP].dport
+        elif UDP in packet:
+            sport, dport = packet[UDP].sport, packet[UDP].dport
+
+        fwd_key = (src, dst, sport, dport, proto)
+        rev_key = (dst, src, dport, sport, proto)
+
+        with self._lock:
+            if fwd_key in self._flows:
+                return fwd_key, True
+            if rev_key in self._flows:
+                return rev_key, False
+            # New flow
+            if len(self._flows) >= MAX_ACTIVE_FLOWS:
+                self._evict_oldest()
+            self._flows[fwd_key] = FlowRecord(key=fwd_key)
+            return fwd_key, True
+
+    def process_packet(self, packet) -> None:
+        result = self._get_flow_key(packet)
+        if result is None:
+            return
+        key, is_fwd = result
+        ts = time.time()
+        with self._lock:
+            if key in self._flows:
+                self._flows[key].add_packet(packet, ts, is_fwd)
+
+    def collect_expired(self) -> List[Tuple[FlowRecord, np.ndarray]]:
+        """Return (record, features) for flows that have timed out."""
+        now = time.time()
+        expired = []
+        with self._lock:
+            keys = list(self._flows.keys())
+            for key in keys:
+                rec = self._flows[key]
+                if rec.start_time > 0 and (now - rec.last_time) > FLOW_TIMEOUT:
+                    vec = rec.to_feature_vector()
+                    if vec is not None:
+                        expired.append((rec, vec))
+                    del self._flows[key]
+        return expired
+
+    def collect_all(self) -> List[Tuple[FlowRecord, np.ndarray]]:
+        """Force-collect all current flows (e.g. at shutdown)."""
+        results = []
+        with self._lock:
+            for rec in self._flows.values():
+                vec = rec.to_feature_vector()
+                if vec is not None:
+                    results.append((rec, vec))
+            self._flows.clear()
+        return results
+
+    def _evict_oldest(self) -> None:
+        if not self._flows:
+            return
+        oldest_key = min(self._flows, key=lambda k: self._flows[k].start_time)
+        del self._flows[oldest_key]
+
+    @property
+    def active_flow_count(self) -> int:
+        with self._lock:
+            return len(self._flows)
