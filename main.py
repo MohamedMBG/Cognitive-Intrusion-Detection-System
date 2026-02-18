@@ -31,7 +31,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
 )
-logger = logging.getLogger("unified-ids")
+logger = logging.getLogger("cnds")
 
 # ── Engine singletons ────────────────────────────────────────────────────────
 supervised  = SupervisedEngine()
@@ -87,7 +87,7 @@ def on_flow_complete(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Unified IDS packet capture")
+    parser = argparse.ArgumentParser(description="Cognitive Network Defense System — packet capture")
     parser.add_argument("--iface", default=CAPTURE_INTERFACE)
     parser.add_argument("--api", action="store_true", help="Also start FastAPI server")
     parser.add_argument("--duration", type=int, default=0, help="Run for N seconds (0 = forever)")

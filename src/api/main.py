@@ -25,14 +25,14 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("Initialising database…")
     await init_db()
-    logger.info("Unified IDS API ready")
+    logger.info("Cognitive Network Defense System API ready")
     yield
     logger.info("Shutdown")
 
 
 app = FastAPI(
-    title="Unified IDS API",
-    description="Multi-engine network intrusion detection: supervised + unsupervised + rules",
+    title="Cognitive Network Defense System API",
+    description="Multi-engine network defense: supervised + unsupervised anomaly detection + rule-based heuristics",
     version="0.1.0",
     lifespan=lifespan,
 )

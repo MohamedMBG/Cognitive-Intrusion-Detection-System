@@ -9,7 +9,7 @@ pipeline {
 
     environment {
         REGISTRY   = "192.168.1.86:5000"
-        IMAGE_NAME = "unified-ids"
+        IMAGE_NAME = "cnds"
         NO_PROXY   = 'localhost,127.0.0.1,192.168.1.0/24,192.168.1.86,192.168.1.62,192.168.1.45'
         no_proxy   = 'localhost,127.0.0.1,192.168.1.0/24,192.168.1.86,192.168.1.62,192.168.1.45'
     }
@@ -56,7 +56,7 @@ pipeline {
                 script {
                     try {
                         sh """
-                        docker run --name test-uids-\${BUILD_NUMBER} \
+                        docker run --name test-cnds-\${BUILD_NUMBER} \
                             --user root \
                             -e DATABASE_URL=sqlite+aiosqlite:////tmp/test.db \
                             ${REGISTRY}/${IMAGE_NAME}:\${BUILD_NUMBER} \
@@ -68,9 +68,9 @@ pipeline {
                                 --disable-warnings
                         """
                     } finally {
-                        sh "docker cp test-uids-\${BUILD_NUMBER}:/app/test-results.xml \${WORKSPACE}/test-results.xml || true"
-                        sh "docker cp test-uids-\${BUILD_NUMBER}:/app/coverage.xml \${WORKSPACE}/coverage.xml || true"
-                        sh "docker rm test-uids-\${BUILD_NUMBER} || true"
+                        sh "docker cp test-cnds-\${BUILD_NUMBER}:/app/test-results.xml \${WORKSPACE}/test-results.xml || true"
+                        sh "docker cp test-cnds-\${BUILD_NUMBER}:/app/coverage.xml \${WORKSPACE}/coverage.xml || true"
+                        sh "docker rm test-cnds-\${BUILD_NUMBER} || true"
                     }
                 }
             }
@@ -89,7 +89,7 @@ pipeline {
                     docker run --rm \
                         -v "\${HOST_WORKSPACE}:/usr/src" \
                         sonarsource/sonar-scanner-cli \
-                        -Dsonar.projectKey=unified-ids \
+                        -Dsonar.projectKey=cnds \
                         -Dsonar.sources=src \
                         -Dsonar.tests=tests \
                         -Dsonar.python.version=3.11 \

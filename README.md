@@ -1,6 +1,6 @@
-# Unified IDS
+# Cognitive Network Defense System
 
-Multi-engine network intrusion detection system combining supervised classification (ML-IDS), unsupervised anomaly detection (cognitive-anomaly-detector), and rule-based heuristics into a unified pipeline.
+Multi-engine network defense system combining supervised classification (ML-IDS), unsupervised anomaly detection (cognitive-anomaly-detector), and rule-based heuristics into a unified pipeline.
 
 ## Architecture
 
