@@ -1,4 +1,4 @@
-"""Unified configuration for the network defense system."""
+"""Configuration for the Cognitive Network Defense System (CNDS)."""
 
 import os
 
@@ -45,7 +45,7 @@ LSTM_MODEL_PATH     = os.path.join(MODELS_DIR, os.getenv("LSTM_MODEL_FILE", "lst
 LSTM_CONFIG_PATH    = os.path.join(MODELS_DIR, os.getenv("LSTM_CONFIG_FILE", "lstm_config.json"))
 
 # ── Database ────────────────────────────────────────────────────────────────────
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./unified_ids.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./cnds.db")
 
 # ── API ────────────────────────────────────────────────────────────────────────
 API_HOST = os.getenv("API_HOST", "0.0.0.0")

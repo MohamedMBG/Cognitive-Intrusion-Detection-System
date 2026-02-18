@@ -1,4 +1,4 @@
-"""Pydantic schemas for the unified IDS API."""
+"""Pydantic schemas for the Cognitive Network Defense System API."""
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
