@@ -1,7 +1,7 @@
 """Supervised classification engine — Random Forest trained on CIC-IDS2017.
 
 Wraps the ML-IDS model (joblib) and returns a (attack_type, confidence) pair
-from a 78-feature flow vector.
+from a 76-feature flow vector.
 """
 
 import logging

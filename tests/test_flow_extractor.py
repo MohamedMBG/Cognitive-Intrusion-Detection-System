@@ -34,7 +34,7 @@ def _make_tcp_packet(src="192.168.1.1", dst="10.0.0.1", sport=12345, dport=80,
 
 
 def test_feature_vector_length():
-    """FlowRecord.to_feature_vector() must produce exactly 78 features."""
+    """FlowRecord.to_feature_vector() must produce exactly 76 features."""
     rec = FlowRecord(key=("1.2.3.4", "5.6.7.8", 1234, 80, 6))
     rec.start_time = time.time() - 1
     rec.last_time  = time.time()
@@ -46,12 +46,12 @@ def test_feature_vector_length():
 
     vec = rec.to_feature_vector()
     assert vec is not None
-    assert len(vec) == 78
-    assert len(FLOW_FEATURE_NAMES) == 78
+    assert len(vec) == 76
+    assert len(FLOW_FEATURE_NAMES) == 76
 
 
 def test_feature_names_count():
-    assert len(FLOW_FEATURE_NAMES) == 78
+    assert len(FLOW_FEATURE_NAMES) == 76
 
 
 def test_insufficient_packets():
@@ -90,4 +90,4 @@ def test_expired_flows_collected():
 
     fe_mod.FLOW_TIMEOUT = original_timeout
     assert len(expired) == 1
-    assert expired[0][1].shape == (78,)
+    assert expired[0][1].shape == (76,)

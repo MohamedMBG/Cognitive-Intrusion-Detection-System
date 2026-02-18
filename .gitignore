@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Model files (large binaries — copy manually per README)
+models/*.joblib
+models/*.pkl
+models/*.pt
+# Keep config files
+!models/*.json
+
+# Database
+*.db
+*.sqlite3
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+

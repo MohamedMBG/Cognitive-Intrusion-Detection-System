@@ -11,7 +11,7 @@ Multi-engine network intrusion detection system combining supervised classificat
                      /      |      \
             Flow      Host     Payload
           Extractor  Extractor  Analyzer
-          (78 feat)  (18 feat)  (patterns)
+          (76 feat)  (18 feat)  (patterns)
               │          │          │
               ▼          ▼          │
          Supervised  IsolationForest│
@@ -28,7 +28,7 @@ Multi-engine network intrusion detection system combining supervised classificat
 
 | Engine | Input | Detects |
 |---|---|---|
-| **Supervised** (Random Forest) | 78 CICFlowMeter flow features | Named attacks from CIC-IDS2017 training |
+| **Supervised** (Random Forest) | 76 CICFlowMeter flow features | Named attacks from CIC-IDS2017 training |
 | **Isolation Forest** | 18 per-IP host features | Zero-day / novel anomalies |
 | **LSTM Autoencoder** | 18-feature sequence per IP | Slow attacks, temporal patterns |
 | **Rules** | Flow metadata + payload | ICMP floods, port scans, SQLi, XSS, etc. |

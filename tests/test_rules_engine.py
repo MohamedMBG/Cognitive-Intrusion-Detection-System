@@ -17,7 +17,7 @@ class _FakeRecord:
 
 
 def _zero_flow_vec():
-    return np.zeros(78, dtype=np.float32)
+    return np.zeros(76, dtype=np.float32)
 
 
 @pytest.fixture

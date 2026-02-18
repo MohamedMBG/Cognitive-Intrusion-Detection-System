@@ -1,7 +1,7 @@
 """CICFlowMeter-compatible flow feature extractor.
 
 Reconstructs bidirectional flows from raw Scapy packets and computes
-the 78 features expected by the ML-IDS supervised model.
+the 76 features expected by the ML-IDS supervised model.
 
 Flow key: (src_ip, dst_ip, src_port, dst_port, protocol)
 The initiator is determined by the first packet seen.
@@ -20,7 +20,7 @@ from ..config import (
     FLOW_TIMEOUT, MAX_ACTIVE_FLOWS, ACTIVE_IDLE_THRESH, COMMON_PORTS
 )
 
-# 78 feature names matching ML-IDS PredictionRequest fields
+# 76 feature names matching ML-IDS PredictionRequest fields
 FLOW_FEATURE_NAMES = [
     "flow_duration", "tot_fwd_pkts", "tot_bwd_pkts",
     "totlen_fwd_pkts", "totlen_bwd_pkts",
@@ -159,7 +159,7 @@ class FlowRecord:
                 self.fwd_act_data_pkts += 1
 
     def to_feature_vector(self) -> Optional[np.ndarray]:
-        """Compute all 78 features. Returns None if insufficient data."""
+        """Compute all 76 features. Returns None if insufficient data."""
         all_pkts = self.fwd_lengths + self.bwd_lengths
         if len(all_pkts) < 2:
             return None
@@ -248,7 +248,7 @@ class FlowRecord:
             idl_mean, idl_std, idl_max, idl_min,
         ]
 
-        assert len(features) == 78, f"Expected 78, got {len(features)}"
+        assert len(features) == 76, f"Expected 76, got {len(features)}"
         return np.array(features, dtype=np.float32)
 
     @property

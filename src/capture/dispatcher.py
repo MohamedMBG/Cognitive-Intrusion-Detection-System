@@ -1,7 +1,7 @@
 """Packet dispatcher — fans a single captured packet out to all feature pipelines.
 
 Each packet is processed by:
-  1. FlowExtractor  — bidirectional flow reconstruction (78 CICFlowMeter features)
+  1. FlowExtractor  — bidirectional flow reconstruction (76 CICFlowMeter features)
   2. HostExtractor  — per-source-IP host features (18 features)
   3. PayloadAnalyzer — application-layer pattern matching
 
