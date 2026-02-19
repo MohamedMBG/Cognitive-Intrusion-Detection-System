@@ -275,6 +275,7 @@ Copy `.env.example` to `.env` and adjust as needed.
 │       ├── database.py          # Async SQLAlchemy session setup
 │       ├── auth.py              # JWT authentication and RBAC
 │       ├── metrics.py           # Prometheus metrics + OpenTelemetry
+│       ├── rate_limit.py        # Per-IP rate limiting middleware
 │       └── routers/
 │           ├── predict.py       # POST /api/predict
 │           ├── alerts.py        # Alert + incident CRUD
