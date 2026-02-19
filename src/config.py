@@ -103,3 +103,11 @@ RATE_LIMIT_WINDOW   = int(os.getenv("RATE_LIMIT_WINDOW", "60"))     # seconds
 
 # ── DNS logging (Phase 8) ─────────────────────────────────────────────────────
 DNS_LOGGING_ENABLED = os.getenv("DNS_LOGGING_ENABLED", "false").lower() == "true"
+
+# ── Confidence decay (Phase 9) ────────────────────────────────────────────────
+CONFIDENCE_DECAY_FACTOR = float(os.getenv("CONFIDENCE_DECAY_FACTOR", "0.9"))  # per repeat alert
+CONFIDENCE_DECAY_WINDOW = int(os.getenv("CONFIDENCE_DECAY_WINDOW", "300"))    # seconds
+
+# ── IP allowlist / blocklist (Phase 9) ────────────────────────────────────────
+IP_ALLOWLIST = set(filter(None, os.getenv("IP_ALLOWLIST", "").split(",")))
+IP_BLOCKLIST = set(filter(None, os.getenv("IP_BLOCKLIST", "").split(",")))

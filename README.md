@@ -118,6 +118,7 @@ Base URL: `http://localhost:8000`
 | `/api/suppression-rules/{rule_id}` | DELETE | Remove a suppression rule |
 | `/api/adaptive-weights` | GET | Compute adaptive engine weights from feedback |
 | `/api/dns-log` | GET | DNS query logs (filter: `src_ip`) |
+| `/api/alerts/trends` | GET | Alert counts bucketed by hour/day (filter: `hours`, `bucket`) |
 | `/api/auth/token` | POST | Issue JWT token (when `JWT_SECRET` is set) |
 | `/ws/alerts` | WebSocket | Real-time alert stream |
 | `/metrics` | GET | Prometheus metrics (when `PROMETHEUS_ENABLED=true`) |
@@ -222,6 +223,10 @@ Copy `.env.example` to `.env` and adjust as needed.
 | `RATE_LIMIT_REQUESTS` | `60` | Max API requests per window per IP |
 | `RATE_LIMIT_WINDOW` | `60` | Rate limit window (seconds) |
 | `DNS_LOGGING_ENABLED` | `false` | Enable DNS query logging from captured traffic |
+| `CONFIDENCE_DECAY_FACTOR` | `0.9` | Score multiplier per repeat alert from same IP |
+| `CONFIDENCE_DECAY_WINDOW` | `300` | Seconds to track repeat alerts for decay |
+| `IP_ALLOWLIST` | _(empty)_ | Comma-separated IPs to skip detection entirely |
+| `IP_BLOCKLIST` | _(empty)_ | Comma-separated IPs to auto-flag as critical |
 
 ---
 

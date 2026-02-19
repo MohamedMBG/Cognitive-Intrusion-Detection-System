@@ -18,6 +18,8 @@ from ...enrichment import geoip
 from ...enrichment.correlation import correlate_alert
 from ...enrichment.suppression import is_suppressed
 from ...enrichment.notifications import notify_alert
+from ...enrichment.confidence_decay import apply_decay
+from ...enrichment.ip_lists import is_allowlisted, is_blocklisted
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["predict"])
@@ -39,6 +41,22 @@ def _severity_from_score(score: float, attack_type: str | None) -> SeverityLevel
 
 @router.post("/predict", response_model=PredictResponse)
 async def predict(body: PredictRequest, db: AsyncSession = Depends(get_db)):
+    # Allowlist: skip detection entirely
+    if is_allowlisted(body.src_ip):
+        return PredictResponse(
+            src_ip=body.src_ip, ensemble_score=0.0, is_anomaly=False,
+            severity="low", attack_type=None,
+            engine_scores=EngineScoresOut(), active_engines=[], alert_id=None,
+        )
+
+    # Blocklist: auto-flag
+    if is_blocklisted(body.src_ip):
+        return PredictResponse(
+            src_ip=body.src_ip, ensemble_score=1.0, is_anomaly=True,
+            severity="critical", attack_type="Blocklisted",
+            engine_scores=EngineScoresOut(), active_engines=["blocklist"], alert_id=None,
+        )
+
     flow_vec  = np.array(body.flow_features,  dtype=np.float32) if body.flow_features  else None
     host_vec  = np.array(body.host_features,  dtype=np.float32) if body.host_features  else None
     pay_vec   = np.array(body.payload_features, dtype=np.float32) if body.payload_features else None
@@ -86,6 +104,12 @@ async def predict(body: PredictRequest, db: AsyncSession = Depends(get_db)):
 
     # --- Ensemble ---
     result = _ensemble.score(scores)
+
+    # Confidence decay for repeated alerts
+    decayed_score = apply_decay(body.src_ip, result.score)
+    result.score = decayed_score
+    result.is_anomaly = decayed_score >= 0.55  # re-evaluate with decayed score
+
     severity = _severity_from_score(result.score, scores.attack_type)
 
     # GeoIP enrichment

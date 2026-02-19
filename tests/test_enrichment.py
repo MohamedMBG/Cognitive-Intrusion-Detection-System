@@ -221,3 +221,56 @@ class TestAdaptiveWeights:
         assert result is not None
         assert set(result.keys()) == {"supervised", "isolation_forest", "lstm", "rules"}
         assert abs(sum(result.values()) - 1.0) < 1e-6
+
+
+# ── Confidence Decay ───────────────────────────────────────────────────────────
+
+class TestConfidenceDecay:
+    def test_first_alert_no_decay(self):
+        from src.enrichment.confidence_decay import apply_decay, _hits, _lock
+        # Use a unique IP to avoid cross-test contamination
+        ip = "99.99.99.1"
+        with _lock:
+            _hits.pop(ip, None)
+        result = apply_decay(ip, 0.9)
+        assert result == 0.9
+        with _lock:
+            _hits.pop(ip, None)
+
+    def test_repeated_alerts_decay(self):
+        from src.enrichment.confidence_decay import apply_decay, _hits, _lock
+        ip = "99.99.99.2"
+        with _lock:
+            _hits.pop(ip, None)
+        apply_decay(ip, 0.9)  # first: no decay
+        result = apply_decay(ip, 0.9)  # second: 1 repeat → 0.9 * 0.9
+        assert result == pytest.approx(0.81)
+        with _lock:
+            _hits.pop(ip, None)
+
+    def test_recent_alert_count(self):
+        from src.enrichment.confidence_decay import apply_decay, recent_alert_count, _hits, _lock
+        ip = "99.99.99.3"
+        with _lock:
+            _hits.pop(ip, None)
+        apply_decay(ip, 0.8)
+        apply_decay(ip, 0.8)
+        assert recent_alert_count(ip) == 2
+        with _lock:
+            _hits.pop(ip, None)
+
+
+# ── IP Lists ──────────────────────────────────────────────────────────────────
+
+class TestIPLists:
+    @patch("src.enrichment.ip_lists.IP_ALLOWLIST", {"10.0.0.1"})
+    def test_allowlisted(self):
+        from src.enrichment.ip_lists import is_allowlisted
+        assert is_allowlisted("10.0.0.1") is True
+        assert is_allowlisted("10.0.0.2") is False
+
+    @patch("src.enrichment.ip_lists.IP_BLOCKLIST", {"192.168.1.100"})
+    def test_blocklisted(self):
+        from src.enrichment.ip_lists import is_blocklisted
+        assert is_blocklisted("192.168.1.100") is True
+        assert is_blocklisted("192.168.1.101") is False

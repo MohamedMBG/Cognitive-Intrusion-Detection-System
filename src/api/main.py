@@ -76,6 +76,8 @@ app.include_router(auth_router)
 
 @app.get("/health")
 async def health():
+    from ..capture.packet_capture import PacketProcessor
+    capture_stats = getattr(app.state, "capture_stats", None)
     return {
         "status": "ok",
         "engines": {
@@ -84,4 +86,5 @@ async def health():
             "lstm":             lstm.is_available,
             "rules":            True,
         },
+        "capture_stats": capture_stats,
     }

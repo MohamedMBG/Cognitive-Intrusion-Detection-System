@@ -172,3 +172,34 @@ async def get_dns_logs(src_ip: Optional[str] = None):
     if src_ip:
         return {"src_ip": src_ip, "queries": get_dns_log(src_ip)}
     return get_all_logs()
+
+
+# ── Alert Trends (Phase 9) ────────────────────────────────────────────────────
+
+@router.get("/alerts/trends")
+async def alert_trends(
+    hours: int = Query(24, ge=1, le=168),
+    bucket: str = Query("hour", regex="^(hour|day)$"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return alert counts bucketed by hour or day."""
+    from datetime import datetime, timedelta, timezone
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    result = await db.execute(
+        select(Alert.timestamp, Alert.severity).where(Alert.timestamp >= cutoff)
+    )
+    rows = result.all()
+
+    buckets: dict = {}
+    for ts, sev in rows:
+        if bucket == "hour":
+            key = ts.strftime("%Y-%m-%dT%H:00:00Z")
+        else:
+            key = ts.strftime("%Y-%m-%dT00:00:00Z")
+        if key not in buckets:
+            buckets[key] = {"total": 0, "by_severity": {}}
+        buckets[key]["total"] += 1
+        sev_val = sev.value if hasattr(sev, "value") else sev
+        buckets[key]["by_severity"][sev_val] = buckets[key]["by_severity"].get(sev_val, 0) + 1
+
+    return {"bucket": bucket, "hours": hours, "data": buckets}

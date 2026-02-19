@@ -144,6 +144,7 @@ def main():
     # Optional API server
     if args.api:
         import uvicorn
+        from src.api.main import app as api_app
         api_thread = threading.Thread(
             target=lambda: uvicorn.run("src.api.main:app", host="0.0.0.0", port=8000, log_level="warning"),
             daemon=True,
@@ -155,6 +156,14 @@ def main():
     dispatcher = Dispatcher(flow_callback=on_flow_complete, flush_interval=10.0)
     processor  = PacketProcessor(callback=dispatcher.dispatch)
     capture    = PacketCapture(processor=processor, iface=args.iface)
+
+    # Expose capture stats to API /health endpoint
+    if args.api:
+        def _update_stats():
+            while not capture._stop.is_set():
+                api_app.state.capture_stats = {**processor.stats, **dispatcher.stats}
+                time.sleep(5)
+        threading.Thread(target=_update_stats, daemon=True, name="stats-updater").start()
 
     def _shutdown(sig, frame):
         logger.info("Shutting down…")
