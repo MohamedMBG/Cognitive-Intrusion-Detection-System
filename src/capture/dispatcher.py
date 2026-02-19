@@ -16,7 +16,7 @@ from typing import Callable, Optional
 
 from ..features.flow_extractor import FlowExtractor, FlowRecord
 from ..features.host_extractor import HostExtractor
-from ..features.payload_analyzer import analyze_payload
+from ..features.payload_analyzer import analyze_payload, extract_payload_features
 from ..config import MAX_ACTIVE_FLOWS
 
 import numpy as np
@@ -81,8 +81,9 @@ class Dispatcher:
             host_vec = self._host_extractor.extract_features(record.src_ip)
             with self._payload_lock:
                 payload_matches = self._payload_hits.pop(record.src_ip, [])
+            payload_features = extract_payload_features(record.fwd_payloads)
             try:
-                self._flow_callback(record, flow_vec, host_vec, payload_matches)
+                self._flow_callback(record, flow_vec, host_vec, payload_matches, payload_features)
             except Exception as e:
                 logger.error("Flow callback error for %s: %s", record.src_ip, e)
 
@@ -92,8 +93,9 @@ class Dispatcher:
             host_vec = self._host_extractor.extract_features(record.src_ip)
             with self._payload_lock:
                 payload_matches = self._payload_hits.pop(record.src_ip, [])
+            payload_features = extract_payload_features(record.fwd_payloads)
             try:
-                self._flow_callback(record, flow_vec, host_vec, payload_matches)
+                self._flow_callback(record, flow_vec, host_vec, payload_matches, payload_features)
             except Exception as e:
                 logger.error("Flush callback error: %s", e)
 

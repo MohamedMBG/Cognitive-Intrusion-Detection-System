@@ -36,7 +36,7 @@
 
 | Engine | Input | Model | Detects |
 |---|---|---|---|
-| **Supervised** | 76 CICFlowMeter flow features | Random Forest (sklearn Pipeline) | Named attacks: DoS, PortScan, Brute-force, Web attacks, Infiltration |
+| **Supervised** | 76 CICFlowMeter flow features (+ 10 payload features if retrained) | Random Forest (sklearn Pipeline) | Named attacks: DoS, PortScan, Brute-force, Web attacks, Infiltration |
 | **Isolation Forest** | 18 per-IP host features | IsolationForest + StandardScaler | Novel / zero-day volumetric anomalies |
 | **LSTM Autoencoder** | 18-feature time-series per IP | PyTorch sequence AE | Slow attacks, temporal behaviour drift |
 | **Rules** | Flow metadata + payload bytes | Threshold rules | ICMP floods, port scans, SQLi, XSS, LFI, large payloads |
@@ -182,6 +182,8 @@ Copy `.env.example` to `.env` and adjust as needed.
 ├── sonar-project.properties
 ├── requirements.txt
 ├── .env.example
+├── scripts/
+│   └── retrain_with_payload.py  # Retrain RF with 86 features (76 flow + 10 payload)
 ├── models/                      # ML model files (binaries not committed)
 │   ├── rf_model.joblib          # Random Forest pipeline (76 features)
 │   ├── isolation_forest.joblib  # Isolation Forest
@@ -216,6 +218,7 @@ Copy `.env.example` to `.env` and adjust as needed.
 └── tests/
     ├── test_flow_extractor.py
     ├── test_host_extractor.py
+    ├── test_payload_features.py
     ├── test_rules_engine.py
     └── test_ensemble.py
 ```
@@ -241,7 +244,7 @@ Jenkins pipeline stages (see `Jenkinsfile`):
 
 - [x] Phase 1 — Shared capture layer (single Scapy loop → dual feature extraction)
 - [x] Phase 2 — All four engines + ensemble scoring + FastAPI orchestration
-- [ ] Phase 3 — Payload pattern features fed into supervised feature set
+- [x] Phase 3 — Payload pattern features fed into supervised feature set
 - [ ] Phase 4 — Confidence calibration and per-attack-type weight tuning
 - [ ] Phase 5 — Unified MLflow registry for all three models
 - [ ] Phase 6 — Real-time dashboard (WebSocket + Streamlit analytics)

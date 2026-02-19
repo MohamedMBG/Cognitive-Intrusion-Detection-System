@@ -35,6 +35,7 @@ def _severity_from_score(score: float, attack_type: str | None) -> SeverityLevel
 async def predict(body: PredictRequest, db: AsyncSession = Depends(get_db)):
     flow_vec  = np.array(body.flow_features,  dtype=np.float32) if body.flow_features  else None
     host_vec  = np.array(body.host_features,  dtype=np.float32) if body.host_features  else None
+    pay_vec   = np.array(body.payload_features, dtype=np.float32) if body.payload_features else None
     payload   = body.payload_matches or []
 
     # --- Run all available engines ---
@@ -42,7 +43,7 @@ async def predict(body: PredictRequest, db: AsyncSession = Depends(get_db)):
 
     # Supervised (needs flow features)
     if flow_vec is not None and _supervised.is_available:
-        result = _supervised.predict(flow_vec)
+        result = _supervised.predict(flow_vec, pay_vec)
         if result:
             label, conf = result
             scores.supervised = 0.0 if label == "BENIGN" else conf

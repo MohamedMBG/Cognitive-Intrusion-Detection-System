@@ -15,12 +15,13 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
-from scapy.all import IP, TCP, UDP, ICMP
+from scapy.all import IP, TCP, UDP, ICMP, Raw
 
 logger = logging.getLogger(__name__)
 
 from ..config import (
-    FLOW_TIMEOUT, MAX_ACTIVE_FLOWS, ACTIVE_IDLE_THRESH, COMMON_PORTS
+    FLOW_TIMEOUT, MAX_ACTIVE_FLOWS, ACTIVE_IDLE_THRESH, COMMON_PORTS,
+    MAX_PAYLOAD_SAMPLES, PAYLOAD_SAMPLE_BYTES,
 )
 
 # 76 feature names matching ML-IDS PredictionRequest fields
@@ -95,6 +96,9 @@ class FlowRecord:
     # Forward packets with actual payload
     fwd_act_data_pkts: int = 0
 
+    # Forward payload samples for payload feature extraction (Phase 3)
+    fwd_payloads: List[bytes] = field(default_factory=list)
+
     # Active / idle period tracking
     _last_active: float = 0.0
     active_periods: List[float] = field(default_factory=list)
@@ -160,6 +164,8 @@ class FlowRecord:
             # Payload data
             if is_forward and tcp.payload and len(bytes(tcp.payload)) > 0:
                 self.fwd_act_data_pkts += 1
+                if len(self.fwd_payloads) < MAX_PAYLOAD_SAMPLES:
+                    self.fwd_payloads.append(bytes(tcp.payload)[:PAYLOAD_SAMPLE_BYTES])
 
     def to_feature_vector(self) -> Optional[np.ndarray]:
         """Compute all 76 features. Returns None if insufficient data."""

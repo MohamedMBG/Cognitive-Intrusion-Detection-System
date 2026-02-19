@@ -11,6 +11,8 @@ PACKET_QUEUE_SIZE = int(os.getenv("PACKET_QUEUE_SIZE", "20000"))
 FLOW_TIMEOUT        = float(os.getenv("FLOW_TIMEOUT", "120"))    # seconds
 MAX_ACTIVE_FLOWS    = int(os.getenv("MAX_ACTIVE_FLOWS", "50000"))
 ACTIVE_IDLE_THRESH  = float(os.getenv("ACTIVE_IDLE_THRESH", "1.0"))  # seconds
+MAX_PAYLOAD_SAMPLES = int(os.getenv("MAX_PAYLOAD_SAMPLES", "50"))    # per flow
+PAYLOAD_SAMPLE_BYTES = int(os.getenv("PAYLOAD_SAMPLE_BYTES", "4096")) # per packet
 
 # ── Host extractor ───────────────────────────────────────────────────────────
 HOST_WINDOW_SIZE    = int(os.getenv("HOST_WINDOW_SIZE", "100"))   # packet history

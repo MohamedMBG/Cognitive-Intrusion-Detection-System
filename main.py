@@ -86,12 +86,13 @@ def on_flow_complete(
     flow_vec: np.ndarray,
     host_vec: Optional[np.ndarray],
     payload_matches: List[str],
+    payload_features: Optional[np.ndarray] = None,
 ) -> None:
     """Called by the Dispatcher when a flow expires."""
     scores = EngineScores()
 
     if supervised.is_available:
-        result = supervised.predict(flow_vec)
+        result = supervised.predict(flow_vec, payload_features)
         if result:
             label, conf = result
             scores.supervised = 0.0 if label == "BENIGN" else conf

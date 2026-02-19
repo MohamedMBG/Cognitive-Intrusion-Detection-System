@@ -16,6 +16,7 @@ class PredictRequest(BaseModel):
     protocol: Optional[int] = None
     flow_features: Optional[List[float]] = Field(None, description="76 CICFlowMeter features", min_length=76, max_length=76)
     host_features: Optional[List[float]] = Field(None, description="18 host-level features", min_length=18, max_length=18)
+    payload_features: Optional[List[float]] = Field(None, description="10 payload features", min_length=10, max_length=10)
     payload_matches: Optional[List[str]] = Field(default_factory=list)
 
 
