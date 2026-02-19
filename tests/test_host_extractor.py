@@ -71,3 +71,29 @@ def test_multiple_ips_tracked():
         for _ in range(5):
             ext.process_packet(_make_ip_packet(src=ip))
     assert len(ext.tracked_ips()) == 3
+
+
+def test_eviction_when_max_ips_exceeded():
+    import src.features.host_extractor as he_mod
+    original = he_mod.MAX_TRACKED_IPS
+    he_mod.MAX_TRACKED_IPS = 2
+    ext = HostExtractor()
+    for ip in ["10.0.0.1", "10.0.0.2", "10.0.0.3"]:
+        for _ in range(3):
+            ext.process_packet(_make_ip_packet(src=ip))
+    he_mod.MAX_TRACKED_IPS = original
+    assert len(ext.tracked_ips()) == 2
+
+
+def test_protocol_ratios():
+    ext = HostExtractor()
+    for _ in range(3):
+        ext.process_packet(_make_ip_packet(src="10.0.0.1", proto="TCP"))
+    for _ in range(3):
+        ext.process_packet(_make_ip_packet(src="10.0.0.1", proto="UDP"))
+    features = ext.extract_features("10.0.0.1")
+    assert features is not None
+    tcp_ratio_idx = HOST_FEATURE_NAMES.index("tcp_ratio")
+    udp_ratio_idx = HOST_FEATURE_NAMES.index("udp_ratio")
+    assert features[tcp_ratio_idx] == pytest.approx(0.5)
+    assert features[udp_ratio_idx] == pytest.approx(0.5)

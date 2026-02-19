@@ -156,3 +156,49 @@ def test_fwd_payloads_not_stored_for_backward():
     ts = time.time()
     rec.add_packet(pkt, ts, is_forward=False)
     assert len(rec.fwd_payloads) == 0
+
+
+def test_src_dst_ip_properties():
+    rec = FlowRecord(key=("1.2.3.4", "5.6.7.8", 1234, 80, 6))
+    assert rec.src_ip == "1.2.3.4"
+    assert rec.dst_ip == "5.6.7.8"
+
+
+def test_collect_all_returns_valid_flows():
+    extractor = FlowExtractor()
+    rec = FlowRecord(key=("1.1.1.1", "2.2.2.2", 100, 80, 6))
+    rec.start_time = time.time() - 1
+    rec.last_time = time.time()
+    rec.fwd_lengths = [100, 200, 150]
+    rec.bwd_lengths = [80]
+    rec.fwd_times = [rec.start_time, rec.start_time + 0.1, rec.start_time + 0.3]
+    rec.bwd_times = [rec.start_time + 0.05]
+    rec._current_active_start = rec.start_time
+    extractor._flows[rec.key] = rec
+
+    results = extractor.collect_all()
+    assert len(results) == 1
+    assert results[0][1].shape == (76,)
+    assert extractor.active_flow_count == 0
+
+
+def test_evict_oldest_when_full():
+    import src.features.flow_extractor as fe_mod
+    original = fe_mod.MAX_ACTIVE_FLOWS
+    fe_mod.MAX_ACTIVE_FLOWS = 2
+    extractor = FlowExtractor()
+
+    for i, key in enumerate([
+        ("10.0.0.1", "10.0.0.2", 100, 80, 6),
+        ("10.0.0.3", "10.0.0.4", 200, 80, 6),
+        ("10.0.0.5", "10.0.0.6", 300, 80, 6),
+    ]):
+        rec = FlowRecord(key=key)
+        rec.start_time = float(i)
+        rec.last_time = float(i)
+        extractor._flows[key] = rec
+        if len(extractor._flows) > fe_mod.MAX_ACTIVE_FLOWS:
+            extractor._evict_oldest()
+
+    fe_mod.MAX_ACTIVE_FLOWS = original
+    assert extractor.active_flow_count == 2

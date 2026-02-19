@@ -53,6 +53,19 @@ def test_payload_match_triggers(engine):
     assert "payload:sql_injection" in triggered
 
 
+def test_syn_scan_triggers(engine):
+    from src.features.flow_extractor import FLOW_FEATURE_NAMES
+    vec = _zero_flow_vec()
+    syn_idx = FLOW_FEATURE_NAMES.index("syn_flag_cnt")
+    fwd_idx = FLOW_FEATURE_NAMES.index("tot_fwd_pkts")
+    vec[syn_idx] = 25  # above PORT_SCAN_THRESHOLD (20)
+    vec[fwd_idx] = 3   # below 5
+    rec = _FakeRecord(fwd_lengths=[40, 40, 40])
+    score, triggered = engine.evaluate(rec, vec, [])
+    assert score == 1.0
+    assert "syn_scan" in triggered
+
+
 def test_asymmetric_upload_triggers(engine):
     rec = _FakeRecord(
         fwd_lengths=[1000] * 20,

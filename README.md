@@ -39,7 +39,7 @@
 | **Supervised** | 76 CICFlowMeter flow features (+ 10 payload features if retrained) | Random Forest (sklearn Pipeline) | Named attacks: DoS, PortScan, Brute-force, Web attacks, Infiltration |
 | **Isolation Forest** | 18 per-IP host features | IsolationForest + StandardScaler | Novel / zero-day volumetric anomalies |
 | **LSTM Autoencoder** | 18-feature time-series per IP | PyTorch sequence AE | Slow attacks, temporal behaviour drift |
-| **Rules** | Flow metadata + payload bytes | Threshold rules | ICMP floods, port scans, SQLi, XSS, LFI, large payloads |
+| **Rules** | Flow metadata + payload bytes | Threshold rules | ICMP floods, SYN scans, SQLi, XSS, LFI, large payloads, asymmetric upload |
 
 Default ensemble weights: Supervised 40 %, Isolation Forest 30 %, LSTM 20 %, Rules 10 %.
 Any missing engine has its weight redistributed proportionally across the active engines.
@@ -81,6 +81,9 @@ CNDS works with any subset of models — missing engines are gracefully skipped.
 # Packet capture + detection (requires root for raw sockets)
 sudo venv/bin/python main.py
 
+# Specify network interface
+sudo venv/bin/python main.py --iface eth0
+
 # Capture + REST API on :8000
 sudo venv/bin/python main.py --api
 
@@ -90,8 +93,10 @@ uvicorn src.api.main:app --host 0.0.0.0 --port 8000
 # Stop automatically after N seconds
 sudo venv/bin/python main.py --duration 60
 
-# Docker Compose (API + SQLite volume)
+# Docker Compose (API + detector + Streamlit dashboard)
 docker-compose up -d
+# API:       http://localhost:8000
+# Dashboard: http://localhost:8501
 ```
 
 ---
@@ -105,7 +110,8 @@ Base URL: `http://localhost:8000`
 | `/health` | GET | Engine availability + capture stats |
 | `/api/predict` | POST | Run all engines on supplied features |
 | `/api/alerts` | GET | List alerts (filter: `severity`, `src_ip`, `acknowledged`) |
-| `/api/alerts/{id}` | PATCH | Acknowledge alert, add notes, link to incident |
+| `/api/alerts/{alert_id}` | GET | Get single alert by ID |
+| `/api/alerts/{alert_id}` | PATCH | Acknowledge alert, add notes, link to incident |
 | `/api/incidents` | GET / POST | Incident management |
 | `/api/stats` | GET | Alert counts grouped by severity |
 | `/api/auth/token` | POST | Issue JWT token (when `JWT_SECRET` is set) |
@@ -160,8 +166,12 @@ Copy `.env.example` to `.env` and adjust as needed.
 |---|---|---|
 | `CAPTURE_INTERFACE` | auto | Network interface (e.g. `eth0`) |
 | `PACKET_WORKERS` | `4` | Async worker threads |
+| `PACKET_QUEUE_SIZE` | `20000` | Internal packet queue size |
 | `FLOW_TIMEOUT` | `120` | Seconds before idle flow is flushed |
 | `MAX_ACTIVE_FLOWS` | `50000` | Max simultaneous tracked flows |
+| `ACTIVE_IDLE_THRESH` | `1.0` | Seconds of inactivity to mark a flow idle |
+| `HOST_WINDOW_SIZE` | `100` | Packet history window per IP for host features |
+| `MAX_TRACKED_IPS` | `5000` | Max IPs tracked by host extractor / LSTM buffers |
 | `MIN_PACKETS_FOR_ML` | `10` | Min packets before ML engines activate |
 | `ENSEMBLE_THRESHOLD` | `0.55` | Score above which an alert fires |
 | `WEIGHT_SUPERVISED` | `0.40` | Supervised engine weight |
@@ -171,13 +181,29 @@ Copy `.env.example` to `.env` and adjust as needed.
 | `LARGE_PAYLOAD_BYTES` | `10000` | Forward payload size (bytes) that triggers the large-payload rule |
 | `MAX_PAYLOAD_SAMPLES` | `50` | Max payload samples stored per flow for feature extraction |
 | `PAYLOAD_SAMPLE_BYTES` | `4096` | Max bytes kept per payload sample |
+| `RATE_SPIKE_MULTIPLIER` | `2.0` | Multiplier for rate-spike rule detection |
+| `ICMP_FLOOD_THRESHOLD` | `50` | ICMP packet count that triggers flood rule |
+| `PORT_SCAN_THRESHOLD` | `20` | SYN count threshold for scan detection |
+| `ALERT_COOLDOWN_SECS` | `60` | Seconds before a duplicate alert can fire again |
+| `DEDUP_WINDOW_SECS` | `300` | Alert deduplication window (seconds) |
+| `MODELS_DIR` | `models` | Directory containing model files |
+| `RF_MODEL_FILE` | `rf_model.joblib` | Random Forest model filename |
+| `IF_MODEL_FILE` | `isolation_forest.joblib` | Isolation Forest model filename |
+| `IF_SCALER_FILE` | `if_scaler.joblib` | IF scaler filename |
+| `LSTM_MODEL_FILE` | `lstm_autoencoder.pt` | LSTM model filename |
+| `LSTM_CONFIG_FILE` | `lstm_config.json` | LSTM config filename |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./cnds.db` | SQLite or PostgreSQL URL |
+| `API_HOST` | `0.0.0.0` | API bind address |
+| `API_PORT` | `8000` | API listen port |
 | `API_KEY` | _(empty)_ | Bearer token; leave empty to disable auth |
 | `CORS_ORIGINS` | _(empty)_ | Comma-separated allowed origins; defaults to `http://localhost:3000` |
 | `ATTACK_TYPE_WEIGHTS` | `{}` | JSON: per-attack-type engine weight overrides |
 | `CALIBRATION_TEMPERATURE` | `1.0` | Platt scaling temperature (>1 softer, <1 sharper) |
 | `MLFLOW_TRACKING_URI` | _(empty)_ | MLflow server URL; empty disables MLflow |
+| `MLFLOW_REGISTRY_NAME` | `cnds` | MLflow model registry name |
 | `JWT_SECRET` | _(empty)_ | JWT signing secret; empty disables JWT auth |
+| `JWT_ALGORITHM` | `HS256` | JWT signing algorithm |
+| `JWT_EXPIRE_MINUTES` | `60` | JWT token expiry (minutes) |
 | `PROMETHEUS_ENABLED` | `false` | Enable Prometheus metrics at `/metrics` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | _(empty)_ | OpenTelemetry OTLP endpoint |
 
