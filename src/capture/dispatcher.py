@@ -17,6 +17,7 @@ from typing import Callable, Optional
 from ..features.flow_extractor import FlowExtractor, FlowRecord
 from ..features.host_extractor import HostExtractor
 from ..features.payload_analyzer import analyze_payload, extract_payload_features
+from ..enrichment.dns_logger import extract_dns_query
 from ..config import MAX_ACTIVE_FLOWS
 
 import numpy as np
@@ -61,6 +62,9 @@ class Dispatcher:
 
         # 3. Payload analysis (cheap — pattern match only)
         matches = analyze_payload(packet)
+
+        # 4. DNS query logging (Phase 8)
+        extract_dns_query(packet)
         if matches and src_ip:
             with self._payload_lock:
                 # Cap entries to prevent unbounded growth from evicted flows

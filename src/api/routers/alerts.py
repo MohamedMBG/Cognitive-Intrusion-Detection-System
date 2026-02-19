@@ -6,8 +6,11 @@ from sqlalchemy import select, desc, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
-from ..models import Alert, Incident, SeverityLevel, IncidentStatus
-from ..schemas import AlertOut, AlertUpdate, IncidentCreate, IncidentOut
+from ..models import Alert, Incident, SeverityLevel, IncidentStatus, SuppressionRule
+from ..schemas import (
+    AlertOut, AlertUpdate, IncidentCreate, IncidentOut,
+    SuppressionRuleCreate, SuppressionRuleOut,
+)
 
 router = APIRouter(prefix="/api", tags=["alerts"])
 
@@ -107,3 +110,65 @@ async def stats(db: AsyncSession = Depends(get_db)):
         "unacknowledged": row.unacked,
         "by_severity": {sev.value: getattr(row, sev.value) for sev in SeverityLevel},
     }
+
+
+# ── Suppression Rules (Phase 8) ───────────────────────────────────────────────
+
+@router.get("/suppression-rules", response_model=List[SuppressionRuleOut])
+async def list_suppression_rules(db: AsyncSession = Depends(get_db)):
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(SuppressionRule).where(SuppressionRule.expires_at > now)
+    )
+    return result.scalars().all()
+
+
+@router.post("/suppression-rules", response_model=SuppressionRuleOut, status_code=201)
+async def create_suppression_rule(
+    body: SuppressionRuleCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    from datetime import datetime, timedelta, timezone
+    rule = SuppressionRule(
+        src_ip=body.src_ip,
+        dst_ip=body.dst_ip,
+        attack_type=body.attack_type,
+        min_severity=body.min_severity,
+        reason=body.reason,
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=body.duration_minutes),
+    )
+    db.add(rule)
+    await db.commit()
+    await db.refresh(rule)
+    return rule
+
+
+@router.delete("/suppression-rules/{rule_id}", status_code=204)
+async def delete_suppression_rule(rule_id: int, db: AsyncSession = Depends(get_db)):
+    rule = await db.get(SuppressionRule, rule_id)
+    if not rule:
+        raise HTTPException(status_code=404, detail="Suppression rule not found")
+    await db.delete(rule)
+    await db.commit()
+
+
+# ── Adaptive Weights (Phase 8) ────────────────────────────────────────────────
+
+@router.get("/adaptive-weights")
+async def get_adaptive_weights(db: AsyncSession = Depends(get_db)):
+    from ...enrichment.adaptive_weights import compute_adaptive_weights
+    weights = await compute_adaptive_weights(db)
+    if weights is None:
+        return {"status": "insufficient_data", "weights": None}
+    return {"status": "ok", "weights": weights}
+
+
+# ── DNS Logs (Phase 8) ────────────────────────────────────────────────────────
+
+@router.get("/dns-log")
+async def get_dns_logs(src_ip: Optional[str] = None):
+    from ...enrichment.dns_logger import get_dns_log, get_all_logs
+    if src_ip:
+        return {"src_ip": src_ip, "queries": get_dns_log(src_ip)}
+    return get_all_logs()

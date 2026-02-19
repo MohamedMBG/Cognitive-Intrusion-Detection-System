@@ -114,6 +114,10 @@ Base URL: `http://localhost:8000`
 | `/api/alerts/{alert_id}` | PATCH | Acknowledge alert, add notes, link to incident |
 | `/api/incidents` | GET / POST | Incident management |
 | `/api/stats` | GET | Alert counts grouped by severity |
+| `/api/suppression-rules` | GET / POST | List or create alert suppression rules |
+| `/api/suppression-rules/{rule_id}` | DELETE | Remove a suppression rule |
+| `/api/adaptive-weights` | GET | Compute adaptive engine weights from feedback |
+| `/api/dns-log` | GET | DNS query logs (filter: `src_ip`) |
 | `/api/auth/token` | POST | Issue JWT token (when `JWT_SECRET` is set) |
 | `/ws/alerts` | WebSocket | Real-time alert stream |
 | `/metrics` | GET | Prometheus metrics (when `PROMETHEUS_ENABLED=true`) |
@@ -206,6 +210,16 @@ Copy `.env.example` to `.env` and adjust as needed.
 | `JWT_EXPIRE_MINUTES` | `60` | JWT token expiry (minutes) |
 | `PROMETHEUS_ENABLED` | `false` | Enable Prometheus metrics at `/metrics` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | _(empty)_ | OpenTelemetry OTLP endpoint |
+| `GEOIP_DB_PATH` | _(empty)_ | Path to GeoLite2-City.mmdb; empty disables GeoIP |
+| `CORRELATION_WINDOW_SECS` | `300` | Time window for alert correlation (seconds) |
+| `CORRELATION_THRESHOLD` | `5` | Alerts from same IP before auto-incident creation |
+| `ADAPTIVE_WEIGHTS_ENABLED` | `false` | Enable adaptive engine weight computation |
+| `ADAPTIVE_MIN_SAMPLES` | `100` | Min acknowledged alerts before adapting weights |
+| `WEBHOOK_URLS` | _(empty)_ | Comma-separated webhook/Slack notification URLs |
+| `NOTIFY_MIN_SEVERITY` | `high` | Minimum severity to trigger webhook notification |
+| `RATE_LIMIT_REQUESTS` | `60` | Max API requests per window per IP |
+| `RATE_LIMIT_WINDOW` | `60` | Rate limit window (seconds) |
+| `DNS_LOGGING_ENABLED` | `false` | Enable DNS query logging from captured traffic |
 
 ---
 
@@ -247,6 +261,13 @@ Copy `.env.example` to `.env` and adjust as needed.
 │   │   └── rules.py             # Rule-based engine
 │   ├── ensemble/
 │   │   └── scorer.py            # Weighted confidence fusion → EnsembleResult
+│   ├── enrichment/
+│   │   ├── geoip.py             # GeoIP enrichment (MaxMind)
+│   │   ├── correlation.py       # Auto-group alerts into incidents
+│   │   ├── adaptive_weights.py  # Feedback-driven engine weight tuning
+│   │   ├── suppression.py       # Temporary alert suppression rules
+│   │   ├── notifications.py     # Webhook/Slack alert notifications
+│   │   └── dns_logger.py        # DNS query logging from captured traffic
 │   └── api/
 │       ├── main.py              # FastAPI application
 │       ├── models.py            # SQLAlchemy ORM (Alert, Incident)
@@ -293,3 +314,4 @@ Jenkins pipeline stages (see `Jenkinsfile`):
 - [x] Phase 5 — Unified MLflow registry for all three models
 - [x] Phase 6 — Real-time dashboard (WebSocket + Streamlit analytics)
 - [x] Phase 7 — Auth (JWT/RBAC), Prometheus metrics, OpenTelemetry tracing
+- [x] Phase 8 — GeoIP enrichment, alert correlation, adaptive weights, suppression rules, webhook notifications, rate limiting, DNS logging

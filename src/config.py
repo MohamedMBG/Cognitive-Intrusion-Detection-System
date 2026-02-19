@@ -79,3 +79,25 @@ OTEL_EXPORTER_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
 
 # ── Alerts ─────────────────────────────────────────────────────────────────────
 DEDUP_WINDOW_SECS = int(os.getenv("DEDUP_WINDOW_SECS", "300"))
+
+# ── GeoIP (Phase 8) ───────────────────────────────────────────────────────────
+GEOIP_DB_PATH = os.getenv("GEOIP_DB_PATH", "")  # path to GeoLite2-City.mmdb; empty = disabled
+
+# ── Alert correlation (Phase 8) ───────────────────────────────────────────────
+CORRELATION_WINDOW_SECS = int(os.getenv("CORRELATION_WINDOW_SECS", "300"))
+CORRELATION_THRESHOLD   = int(os.getenv("CORRELATION_THRESHOLD", "5"))  # alerts before auto-incident
+
+# ── Adaptive weights (Phase 8) ────────────────────────────────────────────────
+ADAPTIVE_WEIGHTS_ENABLED = os.getenv("ADAPTIVE_WEIGHTS_ENABLED", "false").lower() == "true"
+ADAPTIVE_MIN_SAMPLES     = int(os.getenv("ADAPTIVE_MIN_SAMPLES", "100"))
+
+# ── Notifications (Phase 8) ───────────────────────────────────────────────────
+WEBHOOK_URLS       = [u.strip() for u in os.getenv("WEBHOOK_URLS", "").split(",") if u.strip()]
+NOTIFY_MIN_SEVERITY = os.getenv("NOTIFY_MIN_SEVERITY", "high")  # minimum severity to notify
+
+# ── Rate limiting (Phase 8) ───────────────────────────────────────────────────
+RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "60"))   # per window
+RATE_LIMIT_WINDOW   = int(os.getenv("RATE_LIMIT_WINDOW", "60"))     # seconds
+
+# ── DNS logging (Phase 8) ─────────────────────────────────────────────────────
+DNS_LOGGING_ENABLED = os.getenv("DNS_LOGGING_ENABLED", "false").lower() == "true"

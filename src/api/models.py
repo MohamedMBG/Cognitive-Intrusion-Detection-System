@@ -55,6 +55,9 @@ class Alert(Base):
     notes            = Column(Text, nullable=True)
     incident_id      = Column(Integer, ForeignKey("incidents.id"), nullable=True)
 
+    # GeoIP enrichment (Phase 8)
+    src_geo          = Column(JSON, nullable=True)   # {country, city, latitude, longitude}
+
     incident         = relationship("Incident", back_populates="alerts")
 
 
@@ -73,3 +76,17 @@ class Incident(Base):
     notes       = Column(Text, nullable=True)
 
     alerts      = relationship("Alert", back_populates="incident")
+
+
+class SuppressionRule(Base):
+    """Temporary alert suppression filter (Phase 8)."""
+    __tablename__ = "suppression_rules"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    src_ip      = Column(String(45), nullable=True)
+    dst_ip      = Column(String(45), nullable=True)
+    attack_type = Column(String(100), nullable=True)
+    min_severity = Column(String(20), nullable=True)
+    reason      = Column(Text, nullable=True)
+    created_at  = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at  = Column(DateTime, nullable=False, index=True)

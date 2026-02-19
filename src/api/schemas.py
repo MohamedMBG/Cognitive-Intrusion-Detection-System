@@ -38,6 +38,7 @@ class PredictResponse(BaseModel):
     engine_scores: EngineScoresOut
     active_engines: List[str]
     alert_id: Optional[int] = None
+    src_geo: Optional[Dict[str, Any]] = None
 
 
 # ── Alerts ─────────────────────────────────────────────────────────────────────
@@ -57,6 +58,7 @@ class AlertOut(BaseModel):
     acknowledged: bool
     notes: Optional[str]
     incident_id: Optional[int]
+    src_geo: Optional[Dict[str, str]] = None
 
     class Config:
         from_attributes = True
@@ -99,3 +101,28 @@ class HealthOut(BaseModel):
     status: str
     engines: Dict[str, bool]
     capture_stats: Optional[Dict[str, Any]] = None
+
+
+# ── Suppression Rules (Phase 8) ───────────────────────────────────────────────
+
+class SuppressionRuleCreate(BaseModel):
+    src_ip: Optional[str] = None
+    dst_ip: Optional[str] = None
+    attack_type: Optional[str] = None
+    min_severity: Optional[str] = None
+    reason: Optional[str] = None
+    duration_minutes: int = Field(120, ge=1, le=10080, description="Duration in minutes (max 7 days)")
+
+
+class SuppressionRuleOut(BaseModel):
+    id: int
+    src_ip: Optional[str]
+    dst_ip: Optional[str]
+    attack_type: Optional[str]
+    min_severity: Optional[str]
+    reason: Optional[str]
+    created_at: datetime
+    expires_at: datetime
+
+    class Config:
+        from_attributes = True

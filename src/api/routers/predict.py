@@ -14,6 +14,10 @@ from ..metrics import inc_alert
 from ...engines.registry import supervised as _supervised, iforest as _iforest, lstm as _lstm, rules as _rules, ensemble as _ensemble
 from ...ensemble.scorer import EngineScores
 from ...features.flow_extractor import FlowRecord
+from ...enrichment import geoip
+from ...enrichment.correlation import correlate_alert
+from ...enrichment.suppression import is_suppressed
+from ...enrichment.notifications import notify_alert
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["predict"])
@@ -84,6 +88,9 @@ async def predict(body: PredictRequest, db: AsyncSession = Depends(get_db)):
     result = _ensemble.score(scores)
     severity = _severity_from_score(result.score, scores.attack_type)
 
+    # GeoIP enrichment
+    geo = geoip.lookup(body.src_ip)
+
     # --- Persist alert if anomaly ---
     alert_id = None
     if result.is_anomaly:
@@ -107,24 +114,35 @@ async def predict(body: PredictRequest, db: AsyncSession = Depends(get_db)):
             flow_features=body.flow_features,
             host_features=body.host_features,
             payload_matches=payload,
+            src_geo=geo,
         )
         db.add(alert)
-        await db.commit()
-        await db.refresh(alert)
-        alert_id = alert.id
+        await db.flush()
 
-        # Broadcast to WebSocket clients
-        await broadcast_alert({
-            "id": alert_id,
-            "src_ip": body.src_ip,
-            "dst_ip": body.dst_ip,
-            "ensemble_score": result.score,
-            "severity": severity.value,
-            "attack_type": scores.attack_type,
-            "triggered_rules": scores.triggered_rules,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-        inc_alert(severity.value)
+        # Check suppression rules
+        if await is_suppressed(alert, db):
+            await db.rollback()
+        else:
+            # Alert correlation
+            await correlate_alert(alert, db)
+            await db.commit()
+            await db.refresh(alert)
+            alert_id = alert.id
+
+            alert_payload = {
+                "id": alert_id,
+                "src_ip": body.src_ip,
+                "dst_ip": body.dst_ip,
+                "ensemble_score": result.score,
+                "severity": severity.value,
+                "attack_type": scores.attack_type,
+                "triggered_rules": scores.triggered_rules,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "src_geo": geo,
+            }
+            await broadcast_alert(alert_payload)
+            await notify_alert(alert_payload)
+            inc_alert(severity.value)
 
     return PredictResponse(
         src_ip=body.src_ip,
@@ -142,4 +160,5 @@ async def predict(body: PredictRequest, db: AsyncSession = Depends(get_db)):
         ),
         active_engines=result.active_engines,
         alert_id=alert_id,
+        src_geo=geo,
     )

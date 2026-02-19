@@ -13,7 +13,8 @@ from .routers import alerts, predict
 from .routers.websocket import router as ws_router
 from .routers.auth import router as auth_router
 from .metrics import setup_prometheus, setup_otel
-from ..config import API_KEY, CORS_ORIGINS
+from .rate_limit import RateLimitMiddleware
+from ..config import API_KEY, CORS_ORIGINS, RATE_LIMIT_REQUESTS
 from ..engines.registry import supervised, iforest, lstm
 
 logging.basicConfig(
@@ -62,6 +63,10 @@ if API_KEY:
 # Observability (Phase 7)
 setup_prometheus(app)
 setup_otel(app)
+
+# Rate limiting (Phase 8)
+if RATE_LIMIT_REQUESTS > 0:
+    app.add_middleware(RateLimitMiddleware)
 
 app.include_router(alerts.router)
 app.include_router(predict.router)
