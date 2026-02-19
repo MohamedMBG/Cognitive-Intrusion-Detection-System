@@ -31,6 +31,15 @@ WEIGHT_LSTM         = float(os.getenv("WEIGHT_LSTM", "0.20"))
 WEIGHT_RULES        = float(os.getenv("WEIGHT_RULES", "0.10"))
 ENSEMBLE_THRESHOLD  = float(os.getenv("ENSEMBLE_THRESHOLD", "0.55"))
 
+# ── Per-attack-type weight overrides (Phase 4) ───────────────────────────────
+# JSON string mapping attack type → {engine: weight}
+# Example: '{"DoS": {"supervised": 0.6, "rules": 0.2}, "PortScan": {"rules": 0.5}}'
+import json as _json
+ATTACK_TYPE_WEIGHTS = _json.loads(os.getenv("ATTACK_TYPE_WEIGHTS", "{}"))
+
+# Confidence calibration: Platt scaling temperature (>1 = softer, <1 = sharper)
+CALIBRATION_TEMPERATURE = float(os.getenv("CALIBRATION_TEMPERATURE", "1.0"))
+
 # ── Rule thresholds ───────────────────────────────────────────────────────────
 RATE_SPIKE_MULTIPLIER = float(os.getenv("RATE_SPIKE_MULTIPLIER", "2.0"))
 ICMP_FLOOD_THRESHOLD  = int(os.getenv("ICMP_FLOOD_THRESHOLD", "50"))
@@ -46,6 +55,10 @@ IF_SCALER_PATH      = os.path.join(MODELS_DIR, os.getenv("IF_SCALER_FILE", "if_s
 LSTM_MODEL_PATH     = os.path.join(MODELS_DIR, os.getenv("LSTM_MODEL_FILE", "lstm_autoencoder.pt"))
 LSTM_CONFIG_PATH    = os.path.join(MODELS_DIR, os.getenv("LSTM_CONFIG_FILE", "lstm_config.json"))
 
+# ── MLflow (Phase 5) ──────────────────────────────────────────────────────────
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "")  # empty = disabled
+MLFLOW_REGISTRY_NAME = os.getenv("MLFLOW_REGISTRY_NAME", "cnds")
+
 # ── Database ────────────────────────────────────────────────────────────────────
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./cnds.db")
 
@@ -54,6 +67,15 @@ API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", "8000"))
 API_KEY  = os.getenv("API_KEY", "")   # empty = no auth
 CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+
+# ── JWT Auth (Phase 7) ────────────────────────────────────────────────────────
+JWT_SECRET    = os.getenv("JWT_SECRET", "")       # empty = JWT disabled
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
+
+# ── Observability (Phase 7) ───────────────────────────────────────────────────
+PROMETHEUS_ENABLED = os.getenv("PROMETHEUS_ENABLED", "false").lower() == "true"
+OTEL_EXPORTER_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
 
 # ── Alerts ─────────────────────────────────────────────────────────────────────
 DEDUP_WINDOW_SECS = int(os.getenv("DEDUP_WINDOW_SECS", "300"))

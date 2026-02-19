@@ -13,6 +13,7 @@ from collections import defaultdict, deque
 from typing import Optional
 
 from ..config import LSTM_MODEL_PATH, LSTM_CONFIG_PATH, MAX_TRACKED_IPS
+from .. import mlflow_registry
 
 logger = logging.getLogger(__name__)
 
@@ -51,18 +52,23 @@ class LSTMAutoencoderEngine:
             except Exception as e:
                 logger.warning("LSTM config load failed: %s", e)
 
-        if not os.path.exists(model_path):
+        # Try MLflow first for LSTM
+        mlflow_model = mlflow_registry.load_latest_pytorch("lstm")
+        if mlflow_model is not None:
+            self._model = mlflow_model
+            self._model.eval()
+            logger.info("LSTMAutoencoderEngine loaded from MLflow")
+        elif not os.path.exists(model_path):
             logger.warning("LSTM model not found at %s — LSTM engine disabled", model_path)
             return
-        try:
-            import torch
-            # NOTE: weights_only=False required because the model was saved as a
-            # full module (torch.save(model, ...)). Only load models you trust.
-            self._model = torch.load(model_path, map_location="cpu", weights_only=True)
-            self._model.eval()
-            logger.info("LSTMAutoencoderEngine loaded: %s", model_path)
-        except Exception as e:
-            logger.error("Failed to load LSTM model: %s", e)
+        else:
+            try:
+                import torch
+                self._model = torch.load(model_path, map_location="cpu", weights_only=True)
+                self._model.eval()
+                logger.info("LSTMAutoencoderEngine loaded: %s", model_path)
+            except Exception as e:
+                logger.error("Failed to load LSTM model: %s", e)
 
     @property
     def is_available(self) -> bool:

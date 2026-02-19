@@ -9,6 +9,8 @@ import numpy as np
 from ..database import get_db
 from ..models import Alert, SeverityLevel
 from ..schemas import PredictRequest, PredictResponse, EngineScoresOut
+from .websocket import broadcast_alert
+from ..metrics import inc_alert
 from ...engines.registry import supervised as _supervised, iforest as _iforest, lstm as _lstm, rules as _rules, ensemble as _ensemble
 from ...ensemble.scorer import EngineScores
 from ...features.flow_extractor import FlowRecord
@@ -110,6 +112,19 @@ async def predict(body: PredictRequest, db: AsyncSession = Depends(get_db)):
         await db.commit()
         await db.refresh(alert)
         alert_id = alert.id
+
+        # Broadcast to WebSocket clients
+        await broadcast_alert({
+            "id": alert_id,
+            "src_ip": body.src_ip,
+            "dst_ip": body.dst_ip,
+            "ensemble_score": result.score,
+            "severity": severity.value,
+            "attack_type": scores.attack_type,
+            "triggered_rules": scores.triggered_rules,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        inc_alert(severity.value)
 
     return PredictResponse(
         src_ip=body.src_ip,

@@ -14,6 +14,7 @@ import joblib
 from ..config import RF_MODEL_PATH
 from ..features.flow_extractor import FLOW_FEATURE_NAMES
 from ..features.payload_analyzer import PAYLOAD_FEATURE_NAMES
+from .. import mlflow_registry
 
 logger = logging.getLogger(__name__)
 
@@ -31,16 +32,22 @@ class SupervisedEngine:
         self._load()
 
     def _load(self) -> None:
-        if not os.path.exists(self._model_path):
+        # Try MLflow first, fall back to local file
+        model = mlflow_registry.load_latest("supervised")
+        if model is not None:
+            self._model = model
+        elif os.path.exists(self._model_path):
+            try:
+                self._model = joblib.load(self._model_path)
+            except Exception as e:
+                logger.error("Failed to load RF model: %s", e)
+                return
+        else:
             logger.warning("RF model not found at %s — supervised engine disabled", self._model_path)
             return
-        try:
-            self._model = joblib.load(self._model_path)
-            n = getattr(self._model, "n_features_in_", 76)
-            self._expects_payload = (n == len(EXTENDED_FEATURE_NAMES))
-            logger.info("SupervisedEngine loaded: %s (%d features)", self._model_path, n)
-        except Exception as e:
-            logger.error("Failed to load RF model: %s", e)
+        n = getattr(self._model, "n_features_in_", 76)
+        self._expects_payload = (n == len(EXTENDED_FEATURE_NAMES))
+        logger.info("SupervisedEngine loaded (%d features)", n)
 
     @property
     def is_available(self) -> bool:

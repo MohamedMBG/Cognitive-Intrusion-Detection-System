@@ -108,6 +108,9 @@ Base URL: `http://localhost:8000`
 | `/api/alerts/{id}` | PATCH | Acknowledge alert, add notes, link to incident |
 | `/api/incidents` | GET / POST | Incident management |
 | `/api/stats` | GET | Alert counts grouped by severity |
+| `/api/auth/token` | POST | Issue JWT token (when `JWT_SECRET` is set) |
+| `/ws/alerts` | WebSocket | Real-time alert stream |
+| `/metrics` | GET | Prometheus metrics (when `PROMETHEUS_ENABLED=true`) |
 | `/docs` | GET | Swagger UI (auto-generated) |
 
 ### Example: manual prediction
@@ -171,6 +174,12 @@ Copy `.env.example` to `.env` and adjust as needed.
 | `DATABASE_URL` | `sqlite+aiosqlite:///./cnds.db` | SQLite or PostgreSQL URL |
 | `API_KEY` | _(empty)_ | Bearer token; leave empty to disable auth |
 | `CORS_ORIGINS` | _(empty)_ | Comma-separated allowed origins; defaults to `http://localhost:3000` |
+| `ATTACK_TYPE_WEIGHTS` | `{}` | JSON: per-attack-type engine weight overrides |
+| `CALIBRATION_TEMPERATURE` | `1.0` | Platt scaling temperature (>1 softer, <1 sharper) |
+| `MLFLOW_TRACKING_URI` | _(empty)_ | MLflow server URL; empty disables MLflow |
+| `JWT_SECRET` | _(empty)_ | JWT signing secret; empty disables JWT auth |
+| `PROMETHEUS_ENABLED` | `false` | Enable Prometheus metrics at `/metrics` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | _(empty)_ | OpenTelemetry OTLP endpoint |
 
 ---
 
@@ -186,6 +195,8 @@ Copy `.env.example` to `.env` and adjust as needed.
 ├── .env.example
 ├── scripts/
 │   └── retrain_with_payload.py  # Retrain RF with 86 features (76 flow + 10 payload)
+├── dashboard/
+│   └── app.py                   # Streamlit real-time dashboard
 ├── models/                      # ML model files (binaries not committed)
 │   ├── rf_model.joblib          # Random Forest pipeline (76 features)
 │   ├── isolation_forest.joblib  # Isolation Forest
@@ -194,6 +205,7 @@ Copy `.env.example` to `.env` and adjust as needed.
 │   └── lstm_config.json         # LSTM architecture config (tracked)
 ├── src/
 │   ├── config.py                # All settings (env-var driven)
+│   ├── mlflow_registry.py       # Unified MLflow model registry
 │   ├── capture/
 │   │   ├── packet_capture.py    # Scapy capture + async worker queue
 │   │   └── dispatcher.py        # Fan-out to feature pipelines on flow expiry
@@ -214,9 +226,13 @@ Copy `.env.example` to `.env` and adjust as needed.
 │       ├── models.py            # SQLAlchemy ORM (Alert, Incident)
 │       ├── schemas.py           # Pydantic request/response schemas
 │       ├── database.py          # Async SQLAlchemy session setup
+│       ├── auth.py              # JWT authentication and RBAC
+│       ├── metrics.py           # Prometheus metrics + OpenTelemetry
 │       └── routers/
 │           ├── predict.py       # POST /api/predict
-│           └── alerts.py        # Alert + incident CRUD
+│           ├── alerts.py        # Alert + incident CRUD
+│           ├── auth.py          # POST /api/auth/token
+│           └── websocket.py     # WebSocket /ws/alerts
 └── tests/
     ├── test_flow_extractor.py
     ├── test_host_extractor.py
@@ -247,7 +263,7 @@ Jenkins pipeline stages (see `Jenkinsfile`):
 - [x] Phase 1 — Shared capture layer (single Scapy loop → dual feature extraction)
 - [x] Phase 2 — All four engines + ensemble scoring + FastAPI orchestration
 - [x] Phase 3 — Payload pattern features fed into supervised feature set
-- [ ] Phase 4 — Confidence calibration and per-attack-type weight tuning
-- [ ] Phase 5 — Unified MLflow registry for all three models
-- [ ] Phase 6 — Real-time dashboard (WebSocket + Streamlit analytics)
-- [ ] Phase 7 — Auth (JWT/RBAC), Prometheus metrics, OpenTelemetry tracing
+- [x] Phase 4 — Confidence calibration and per-attack-type weight tuning
+- [x] Phase 5 — Unified MLflow registry for all three models
+- [x] Phase 6 — Real-time dashboard (WebSocket + Streamlit analytics)
+- [x] Phase 7 — Auth (JWT/RBAC), Prometheus metrics, OpenTelemetry tracing

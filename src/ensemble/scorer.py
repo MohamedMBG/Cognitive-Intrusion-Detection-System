@@ -2,15 +2,17 @@
 
 Combines scores from four engines into a single [0, 1] confidence value.
 Engines without data have their weight redistributed to active engines.
+Supports per-attack-type weight overrides and confidence calibration (Phase 4).
 """
 
 import logging
+import math
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from ..config import (
     WEIGHT_SUPERVISED, WEIGHT_IFOREST, WEIGHT_LSTM, WEIGHT_RULES,
-    ENSEMBLE_THRESHOLD,
+    ENSEMBLE_THRESHOLD, ATTACK_TYPE_WEIGHTS, CALIBRATION_TEMPERATURE,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,6 +39,17 @@ class EnsembleResult:
     is_anomaly: bool
     engine_scores: EngineScores
     active_engines: List[str]
+    calibrated_score: float = 0.0         # After temperature scaling
+
+
+def _calibrate(score: float, temperature: float) -> float:
+    """Apply Platt-style temperature scaling to a [0,1] score."""
+    if temperature == 1.0 or score <= 0.0 or score >= 1.0:
+        return score
+    # Convert to logit, scale, convert back
+    logit = math.log(score / (1.0 - score))
+    scaled = logit / max(temperature, 1e-9)
+    return 1.0 / (1.0 + math.exp(-scaled))
 
 
 class EnsembleScorer:
@@ -48,6 +61,15 @@ class EnsembleScorer:
         "lstm":            WEIGHT_LSTM,
         "rules":           WEIGHT_RULES,
     }
+
+    def _get_weights(self, attack_type: Optional[str]) -> Dict[str, float]:
+        """Return base weights, overridden by attack-type-specific weights if configured."""
+        if attack_type and attack_type != "BENIGN" and attack_type in ATTACK_TYPE_WEIGHTS:
+            overrides = ATTACK_TYPE_WEIGHTS[attack_type]
+            weights = dict(self._BASE_WEIGHTS)
+            weights.update(overrides)
+            return weights
+        return dict(self._BASE_WEIGHTS)
 
     def score(self, scores: EngineScores) -> EnsembleResult:
         available: Dict[str, float] = {}
@@ -63,26 +85,31 @@ class EnsembleScorer:
 
         if not available:
             return EnsembleResult(
-                score=0.0,
-                is_anomaly=False,
-                engine_scores=scores,
-                active_engines=[],
+                score=0.0, is_anomaly=False, engine_scores=scores,
+                active_engines=[], calibrated_score=0.0,
             )
 
+        # Use attack-type-specific weights if available
+        base_weights = self._get_weights(scores.attack_type)
+
         # Redistribute weights of missing engines
-        total_base = sum(self._BASE_WEIGHTS[e] for e in available)
+        total_base = sum(base_weights.get(e, 0.0) for e in available)
         if total_base == 0:
             return EnsembleResult(
-                score=0.0, is_anomaly=False, engine_scores=scores, active_engines=list(available.keys()),
+                score=0.0, is_anomaly=False, engine_scores=scores,
+                active_engines=list(available.keys()), calibrated_score=0.0,
             )
-        weights = {e: self._BASE_WEIGHTS[e] / total_base for e in available}
+        weights = {e: base_weights.get(e, 0.0) / total_base for e in available}
 
         combined = sum(weights[e] * available[e] for e in available)
         combined = float(max(0.0, min(1.0, combined)))
 
+        calibrated = _calibrate(combined, CALIBRATION_TEMPERATURE)
+
         return EnsembleResult(
             score=combined,
-            is_anomaly=combined >= ENSEMBLE_THRESHOLD,
+            is_anomaly=calibrated >= ENSEMBLE_THRESHOLD,
             engine_scores=scores,
             active_engines=list(available.keys()),
+            calibrated_score=calibrated,
         )

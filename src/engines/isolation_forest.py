@@ -12,6 +12,7 @@ from typing import Optional
 import joblib
 
 from ..config import IF_MODEL_PATH, IF_SCALER_PATH
+from .. import mlflow_registry
 
 logger = logging.getLogger(__name__)
 
@@ -31,14 +32,19 @@ class IsolationForestEngine:
         self._load()
 
     def _load(self) -> None:
-        try:
-            if os.path.exists(self._model_path):
+        # Try MLflow first
+        model = mlflow_registry.load_latest("isolation_forest")
+        if model is not None:
+            self._model = model
+            logger.info("IsolationForestEngine loaded from MLflow")
+        elif os.path.exists(self._model_path):
+            try:
                 self._model = joblib.load(self._model_path)
                 logger.info("IsolationForestEngine loaded: %s", self._model_path)
-            else:
-                logger.warning("IF model not found at %s", self._model_path)
-        except Exception as e:
-            logger.error("Failed to load IF model: %s", e)
+            except Exception as e:
+                logger.error("Failed to load IF model: %s", e)
+        else:
+            logger.warning("IF model not found at %s", self._model_path)
 
         try:
             if os.path.exists(self._scaler_path):

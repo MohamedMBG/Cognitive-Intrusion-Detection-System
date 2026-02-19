@@ -1,5 +1,8 @@
 """Shared engine singletons — single source of truth for all entry points."""
 
+from .. import mlflow_registry
+mlflow_registry.init()
+
 from .supervised import SupervisedEngine
 from .isolation_forest import IsolationForestEngine
 from .lstm_autoencoder import LSTMAutoencoderEngine

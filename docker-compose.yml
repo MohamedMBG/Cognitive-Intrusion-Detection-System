@@ -25,5 +25,19 @@ services:
     env_file: .env
     restart: unless-stopped
 
+  dashboard:
+    build: .
+    container_name: cnds-dashboard
+    command: >
+      sh -c "pip install --quiet streamlit requests pandas &&
+             streamlit run dashboard/app.py --server.port 8501 --server.address 0.0.0.0"
+    ports:
+      - "8501:8501"
+    environment:
+      - CNDS_API_URL=http://api:8000
+    depends_on:
+      - api
+    restart: unless-stopped
+
 volumes:
   cnds_db:
