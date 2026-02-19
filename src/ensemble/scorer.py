@@ -71,6 +71,10 @@ class EnsembleScorer:
 
         # Redistribute weights of missing engines
         total_base = sum(self._BASE_WEIGHTS[e] for e in available)
+        if total_base == 0:
+            return EnsembleResult(
+                score=0.0, is_anomaly=False, engine_scores=scores, active_engines=list(available.keys()),
+            )
         weights = {e: self._BASE_WEIGHTS[e] / total_base for e in available}
 
         combined = sum(weights[e] * available[e] for e in available)

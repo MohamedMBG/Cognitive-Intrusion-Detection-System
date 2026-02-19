@@ -8,7 +8,7 @@ import logging
 from typing import List, Optional, Tuple
 import numpy as np
 
-from ..features.flow_extractor import FlowRecord
+from ..features.flow_extractor import FlowRecord, FLOW_FEATURE_NAMES
 from ..config import (
     ICMP_FLOOD_THRESHOLD, PORT_SCAN_THRESHOLD,
     LARGE_PAYLOAD_BYTES, RATE_SPIKE_MULTIPLIER,
@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 PROTO_ICMP = 1
 PROTO_TCP  = 6
 PROTO_UDP  = 17
+
+# Feature indices by name
+_IDX_SYN_FLAG_CNT = FLOW_FEATURE_NAMES.index("syn_flag_cnt")
+_IDX_TOT_FWD_PKTS = FLOW_FEATURE_NAMES.index("tot_fwd_pkts")
 
 
 class RulesEngine:
@@ -53,8 +57,8 @@ class RulesEngine:
         # if the single flow has suspiciously high port diversity.)
         # Proxy: high SYN count with low data
         if (flow_features is not None and
-                flow_features[43] > PORT_SCAN_THRESHOLD and  # syn_flag_cnt index
-                flow_features[1] < 5):                        # tot_fwd_pkts
+                flow_features[_IDX_SYN_FLAG_CNT] > PORT_SCAN_THRESHOLD and
+                flow_features[_IDX_TOT_FWD_PKTS] < 5):
             triggered.append("syn_scan")
 
         # 3. Large payload

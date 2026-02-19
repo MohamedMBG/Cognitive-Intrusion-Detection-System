@@ -33,7 +33,7 @@ ENSEMBLE_THRESHOLD  = float(os.getenv("ENSEMBLE_THRESHOLD", "0.55"))
 RATE_SPIKE_MULTIPLIER = float(os.getenv("RATE_SPIKE_MULTIPLIER", "2.0"))
 ICMP_FLOOD_THRESHOLD  = int(os.getenv("ICMP_FLOOD_THRESHOLD", "50"))
 PORT_SCAN_THRESHOLD   = int(os.getenv("PORT_SCAN_THRESHOLD", "20"))   # unique ports
-LARGE_PAYLOAD_BYTES   = int(os.getenv("LARGE_PAYLOAD_BYTES", "100"))
+LARGE_PAYLOAD_BYTES   = int(os.getenv("LARGE_PAYLOAD_BYTES", "10000"))
 ALERT_COOLDOWN_SECS   = int(os.getenv("ALERT_COOLDOWN_SECS", "60"))
 
 # ── Model paths ────────────────────────────────────────────────────────────────
@@ -51,6 +51,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./cnds.db")
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", "8000"))
 API_KEY  = os.getenv("API_KEY", "")   # empty = no auth
+CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 
 # ── Alerts ─────────────────────────────────────────────────────────────────────
 DEDUP_WINDOW_SECS = int(os.getenv("DEDUP_WINDOW_SECS", "300"))

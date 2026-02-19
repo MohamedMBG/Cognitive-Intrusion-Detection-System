@@ -1,7 +1,7 @@
 """SQLAlchemy ORM models."""
 
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (
     Column, Integer, String, Float, Boolean,
     DateTime, JSON, Enum as SAEnum, ForeignKey, Text,
@@ -29,7 +29,7 @@ class Alert(Base):
     __tablename__ = "alerts"
 
     id               = Column(Integer, primary_key=True, index=True)
-    timestamp        = Column(DateTime, default=datetime.utcnow, index=True)
+    timestamp        = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     src_ip           = Column(String(45), index=True)
     dst_ip           = Column(String(45), nullable=True)
     src_port         = Column(Integer, nullable=True)
@@ -67,8 +67,8 @@ class Incident(Base):
     status      = Column(SAEnum(IncidentStatus), default=IncidentStatus.OPEN)
     severity    = Column(SAEnum(SeverityLevel), default=SeverityLevel.MEDIUM)
     assigned_to = Column(String(100), nullable=True)
-    created_at  = Column(DateTime, default=datetime.utcnow)
-    updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at  = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at  = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     resolved_at = Column(DateTime, nullable=True)
     notes       = Column(Text, nullable=True)
 

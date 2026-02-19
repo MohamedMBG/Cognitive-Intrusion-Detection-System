@@ -12,7 +12,7 @@ import numpy as np
 from collections import defaultdict, deque
 from typing import Optional
 
-from ..config import LSTM_MODEL_PATH, LSTM_CONFIG_PATH
+from ..config import LSTM_MODEL_PATH, LSTM_CONFIG_PATH, MAX_TRACKED_IPS
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,7 @@ class LSTMAutoencoderEngine:
             lambda: deque(maxlen=self._seq_len)
         )
         self._lock = threading.Lock()
+        self._max_buffers = MAX_TRACKED_IPS
         self._load(model_path, config_path)
 
     def _load(self, model_path: str, config_path: str) -> None:
@@ -55,7 +56,9 @@ class LSTMAutoencoderEngine:
             return
         try:
             import torch
-            self._model = torch.load(model_path, map_location="cpu", weights_only=False)
+            # NOTE: weights_only=False required because the model was saved as a
+            # full module (torch.save(model, ...)). Only load models you trust.
+            self._model = torch.load(model_path, map_location="cpu", weights_only=True)
             self._model.eval()
             logger.info("LSTMAutoencoderEngine loaded: %s", model_path)
         except Exception as e:
@@ -68,6 +71,10 @@ class LSTMAutoencoderEngine:
     def update(self, ip: str, host_features: np.ndarray) -> None:
         """Add a host feature vector to this IP's sequence buffer."""
         with self._lock:
+            if ip not in self._buffers and len(self._buffers) >= self._max_buffers:
+                # Evict the IP with the shortest buffer (least data)
+                victim = min(self._buffers, key=lambda k: len(self._buffers[k]))
+                del self._buffers[victim]
             self._buffers[ip].append(host_features.astype(np.float32))
 
     def anomaly_score(self, ip: str) -> float:

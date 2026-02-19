@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11.8-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpcap-dev gcc g++ \
@@ -18,3 +18,5 @@ EXPOSE 8000
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+
+USER ids

@@ -8,6 +8,7 @@ The initiator is determined by the first packet seen.
 """
 
 import time
+import logging
 import threading
 import numpy as np
 from collections import defaultdict
@@ -15,6 +16,8 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from scapy.all import IP, TCP, UDP, ICMP
+
+logger = logging.getLogger(__name__)
 
 from ..config import (
     FLOW_TIMEOUT, MAX_ACTIVE_FLOWS, ACTIVE_IDLE_THRESH, COMMON_PORTS
@@ -248,7 +251,9 @@ class FlowRecord:
             idl_mean, idl_std, idl_max, idl_min,
         ]
 
-        assert len(features) == 76, f"Expected 76, got {len(features)}"
+        if len(features) != 76:
+            logger.error("Feature vector length %d, expected 76", len(features))
+            return None
         return np.array(features, dtype=np.float32)
 
     @property
@@ -267,10 +272,9 @@ class FlowExtractor:
         self._flows: Dict[FlowKey, FlowRecord] = {}
         self._lock = threading.RLock()
 
-    def _get_flow_key(self, packet) -> Optional[Tuple[FlowKey, bool]]:
-        """Return (flow_key, is_forward) or None if not IP."""
+    def process_packet(self, packet) -> None:
         if IP not in packet:
-            return None
+            return
         ip = packet[IP]
         src, dst = ip.src, ip.dst
         proto = ip.proto
@@ -283,42 +287,38 @@ class FlowExtractor:
 
         fwd_key = (src, dst, sport, dport, proto)
         rev_key = (dst, src, dport, sport, proto)
+        ts = time.time()
 
         with self._lock:
             if fwd_key in self._flows:
-                return fwd_key, True
-            if rev_key in self._flows:
-                return rev_key, False
-            # New flow
-            if len(self._flows) >= MAX_ACTIVE_FLOWS:
-                self._evict_oldest()
-            self._flows[fwd_key] = FlowRecord(key=fwd_key)
-            return fwd_key, True
-
-    def process_packet(self, packet) -> None:
-        result = self._get_flow_key(packet)
-        if result is None:
-            return
-        key, is_fwd = result
-        ts = time.time()
-        with self._lock:
-            if key in self._flows:
-                self._flows[key].add_packet(packet, ts, is_fwd)
+                self._flows[fwd_key].add_packet(packet, ts, True)
+            elif rev_key in self._flows:
+                self._flows[rev_key].add_packet(packet, ts, False)
+            else:
+                if len(self._flows) >= MAX_ACTIVE_FLOWS:
+                    self._evict_oldest()
+                self._flows[fwd_key] = FlowRecord(key=fwd_key)
+                self._flows[fwd_key].add_packet(packet, ts, True)
 
     def collect_expired(self) -> List[Tuple[FlowRecord, np.ndarray]]:
         """Return (record, features) for flows that have timed out."""
         now = time.time()
-        expired = []
+        # Snapshot keys under lock, then process outside to minimise hold time
         with self._lock:
-            keys = list(self._flows.keys())
-            for key in keys:
-                rec = self._flows[key]
-                if rec.start_time > 0 and (now - rec.last_time) > FLOW_TIMEOUT:
-                    vec = rec.to_feature_vector()
-                    if vec is not None:
-                        expired.append((rec, vec))
-                    del self._flows[key]
-        return expired
+            expired_keys = [
+                k for k, rec in self._flows.items()
+                if rec.start_time > 0 and (now - rec.last_time) > FLOW_TIMEOUT
+            ]
+            expired_records = []
+            for key in expired_keys:
+                expired_records.append(self._flows.pop(key))
+
+        results = []
+        for rec in expired_records:
+            vec = rec.to_feature_vector()
+            if vec is not None:
+                results.append((rec, vec))
+        return results
 
     def collect_all(self) -> List[Tuple[FlowRecord, np.ndarray]]:
         """Force-collect all current flows (e.g. at shutdown)."""

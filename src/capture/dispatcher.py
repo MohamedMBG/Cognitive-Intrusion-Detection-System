@@ -17,6 +17,7 @@ from typing import Callable, Optional
 from ..features.flow_extractor import FlowExtractor, FlowRecord
 from ..features.host_extractor import HostExtractor
 from ..features.payload_analyzer import analyze_payload
+from ..config import MAX_ACTIVE_FLOWS
 
 import numpy as np
 
@@ -47,6 +48,7 @@ class Dispatcher:
         # Track latest payload matches per src_ip for correlation at flow emit
         self._payload_hits: dict[str, list[str]] = {}
         self._payload_lock = threading.Lock()
+        self._max_payload_entries = MAX_ACTIVE_FLOWS
 
     def dispatch(self, packet) -> None:
         """Process one packet through all pipelines."""
@@ -60,6 +62,9 @@ class Dispatcher:
         matches = analyze_payload(packet)
         if matches and src_ip:
             with self._payload_lock:
+                # Cap entries to prevent unbounded growth from evicted flows
+                if src_ip not in self._payload_hits and len(self._payload_hits) >= self._max_payload_entries:
+                    self._payload_hits.pop(next(iter(self._payload_hits)), None)
                 existing = self._payload_hits.get(src_ip, [])
                 # Keep last 20 unique matches per IP
                 combined = list(set(existing + matches))[-20:]

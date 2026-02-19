@@ -40,7 +40,7 @@ def test_icmp_flood_triggers(engine):
 
 
 def test_large_payload_triggers(engine):
-    rec = _FakeRecord(fwd_lengths=[500])
+    rec = _FakeRecord(fwd_lengths=[15000])
     score, triggered = engine.evaluate(rec, _zero_flow_vec(), [])
     assert score == 1.0
     assert "large_payload" in triggered

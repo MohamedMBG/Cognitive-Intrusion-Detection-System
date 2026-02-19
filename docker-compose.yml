@@ -17,7 +17,7 @@ services:
     container_name: cnds-detector
     # Root required for raw packet capture
     user: root
-    command: python main.py --api
+    command: python main.py
     network_mode: host
     volumes:
       - ./models:/app/models:ro

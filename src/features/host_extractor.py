@@ -109,9 +109,23 @@ class HostExtractor:
             h = self._data[ip]
             if h.total_packets < 3:
                 return None
+            # Snapshot mutable deques under lock to avoid races with process_packet
+            snapshot = HostHistory(
+                packet_sizes=deque(h.packet_sizes, maxlen=HOST_WINDOW_SIZE),
+                payload_sizes=deque(h.payload_sizes, maxlen=HOST_WINDOW_SIZE),
+                timestamps=deque(h.timestamps, maxlen=HOST_WINDOW_SIZE),
+                payload_entropies=deque(h.payload_entropies, maxlen=HOST_WINDOW_SIZE),
+                ports=deque(h.ports, maxlen=HOST_WINDOW_SIZE),
+                first_seen=h.first_seen,
+                total_packets=h.total_packets,
+                total_bytes=h.total_bytes,
+                tcp_count=h.tcp_count,
+                udp_count=h.udp_count,
+                icmp_count=h.icmp_count,
+            )
 
         try:
-            return self._compute(h)
+            return self._compute(snapshot)
         except Exception:
             return None
 

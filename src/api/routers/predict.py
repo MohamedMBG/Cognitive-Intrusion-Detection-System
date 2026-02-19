@@ -1,7 +1,7 @@
 """Unified prediction endpoint — runs all engines and returns ensemble result."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 import numpy as np
@@ -9,22 +9,12 @@ import numpy as np
 from ..database import get_db
 from ..models import Alert, SeverityLevel
 from ..schemas import PredictRequest, PredictResponse, EngineScoresOut
-from ...engines.supervised import SupervisedEngine
-from ...engines.isolation_forest import IsolationForestEngine
-from ...engines.lstm_autoencoder import LSTMAutoencoderEngine
-from ...engines.rules import RulesEngine
-from ...ensemble.scorer import EnsembleScorer, EngineScores
+from ...engines.registry import supervised as _supervised, iforest as _iforest, lstm as _lstm, rules as _rules, ensemble as _ensemble
+from ...ensemble.scorer import EngineScores
 from ...features.flow_extractor import FlowRecord
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["predict"])
-
-# Engine singletons (loaded once at import time)
-_supervised  = SupervisedEngine()
-_iforest     = IsolationForestEngine()
-_lstm        = LSTMAutoencoderEngine()
-_rules       = RulesEngine()
-_ensemble    = EnsembleScorer()
 
 
 def _severity_from_score(score: float, attack_type: str | None) -> SeverityLevel:
@@ -72,16 +62,15 @@ async def predict(body: PredictRequest, db: AsyncSession = Depends(get_db)):
 
     # Rules (uses a minimal FlowRecord proxy or payload alone)
     if flow_vec is not None:
-        # Build a minimal FlowRecord-like proxy for rule evaluation
-        class _FlowProxy:
-            key = (body.src_ip, body.dst_ip or "", body.src_port or 0,
-                   body.dst_port or 0, body.protocol or 0)
-            fwd_lengths = [int(flow_vec[3])] if flow_vec is not None else []
-            bwd_lengths = []
-            start_time  = 0.0
-            last_time   = float(flow_vec[0]) if flow_vec is not None else 1.0
+        proxy = FlowRecord(
+            key=(body.src_ip, body.dst_ip or "", body.src_port or 0,
+                 body.dst_port or 0, body.protocol or 0),
+        )
+        proxy.fwd_lengths = [int(flow_vec[3])] if flow_vec is not None else []
+        proxy.start_time = 0.0
+        proxy.last_time = float(flow_vec[0]) if flow_vec is not None else 1.0
 
-        rule_score, triggered = _rules.evaluate(_FlowProxy(), flow_vec, payload)
+        rule_score, triggered = _rules.evaluate(proxy, flow_vec, payload)
         scores.rules = rule_score
         scores.triggered_rules = triggered
     elif payload:
@@ -96,7 +85,7 @@ async def predict(body: PredictRequest, db: AsyncSession = Depends(get_db)):
     alert_id = None
     if result.is_anomaly:
         alert = Alert(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             src_ip=body.src_ip,
             dst_ip=body.dst_ip,
             src_port=body.src_port,

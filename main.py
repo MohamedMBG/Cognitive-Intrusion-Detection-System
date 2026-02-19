@@ -17,14 +17,11 @@ import threading
 import numpy as np
 from typing import List, Optional
 
-from src.config import CAPTURE_INTERFACE, MIN_PACKETS_FOR_ML
+from src.config import CAPTURE_INTERFACE, MIN_PACKETS_FOR_ML, DATABASE_URL
 from src.capture.packet_capture import PacketCapture, PacketProcessor
 from src.capture.dispatcher import Dispatcher
-from src.engines.supervised import SupervisedEngine
-from src.engines.isolation_forest import IsolationForestEngine
-from src.engines.lstm_autoencoder import LSTMAutoencoderEngine
-from src.engines.rules import RulesEngine
-from src.ensemble.scorer import EnsembleScorer, EngineScores
+from src.engines.registry import supervised, iforest, lstm, rules, ensemble
+from src.ensemble.scorer import EngineScores
 from src.features.flow_extractor import FlowRecord
 
 logging.basicConfig(
@@ -33,12 +30,55 @@ logging.basicConfig(
 )
 logger = logging.getLogger("cnds")
 
-# ── Engine singletons ────────────────────────────────────────────────────────
-supervised  = SupervisedEngine()
-iforest     = IsolationForestEngine()
-lstm        = LSTMAutoencoderEngine()
-rules       = RulesEngine()
-ensemble    = EnsembleScorer()
+# ── Alert persistence (sync wrapper for the async DB) ─────────────────────────
+_db_engine = None
+_SessionLocal = None
+
+
+def _init_db():
+    """Lazy-init a sync-compatible DB session for the capture pipeline."""
+    global _db_engine, _SessionLocal
+    if _SessionLocal is not None:
+        return
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from src.api.models import Base
+    # Convert async URL to sync (aiosqlite → pysqlite)
+    sync_url = DATABASE_URL.replace("+aiosqlite", "").replace("+asyncpg", "+psycopg2")
+    _db_engine = create_engine(sync_url, echo=False)
+    Base.metadata.create_all(_db_engine)
+    _SessionLocal = sessionmaker(bind=_db_engine)
+
+
+def _persist_alert(record, scores, result, severity, triggered):
+    """Write alert to DB. Best-effort — errors are logged, not raised."""
+    try:
+        _init_db()
+        from datetime import datetime, timezone
+        from src.api.models import Alert
+        session = _SessionLocal()
+        try:
+            alert = Alert(
+                timestamp=datetime.now(timezone.utc),
+                src_ip=record.src_ip,
+                dst_ip=record.dst_ip,
+                attack_type=scores.attack_type,
+                severity=severity,
+                ensemble_score=result.score,
+                engine_scores={
+                    "supervised": scores.supervised,
+                    "isolation_forest": scores.isolation_forest,
+                    "lstm": scores.lstm,
+                    "rules": scores.rules,
+                },
+                triggered_rules=triggered,
+            )
+            session.add(alert)
+            session.commit()
+        finally:
+            session.close()
+    except Exception as e:
+        logger.error("Failed to persist alert: %s", e)
 
 
 def on_flow_complete(
@@ -72,6 +112,9 @@ def on_flow_complete(
     result = ensemble.score(scores)
 
     if result.is_anomaly:
+        severity = "critical" if result.score >= 0.85 else \
+                   "high" if result.score >= 0.70 else \
+                   "medium" if result.score >= 0.55 else "low"
         parts = [
             f"src={record.src_ip}",
             f"dst={record.dst_ip}",
@@ -84,6 +127,7 @@ def on_flow_complete(
             parts.append(f"rules={triggered}")
 
         logger.warning("[ALERT] %s", " | ".join(parts))
+        _persist_alert(record, scores, result, severity, triggered)
 
 
 def main():

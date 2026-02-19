@@ -2,7 +2,7 @@
 
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
@@ -90,19 +90,20 @@ async def create_incident(body: IncidentCreate, db: AsyncSession = Depends(get_d
 
 @router.get("/stats")
 async def stats(db: AsyncSession = Depends(get_db)):
-    from sqlalchemy import func
-    total = (await db.execute(select(func.count(Alert.id)))).scalar()
-    unacked = (await db.execute(
-        select(func.count(Alert.id)).where(Alert.acknowledged == False)
-    )).scalar()
-    by_severity = {}
-    for sev in SeverityLevel:
-        count = (await db.execute(
-            select(func.count(Alert.id)).where(Alert.severity == sev)
-        )).scalar()
-        by_severity[sev.value] = count
+    from sqlalchemy import func, case
+    result = await db.execute(
+        select(
+            func.count(Alert.id).label("total"),
+            func.count(case((Alert.acknowledged == False, 1))).label("unacked"),
+            *[
+                func.count(case((Alert.severity == sev, 1))).label(sev.value)
+                for sev in SeverityLevel
+            ],
+        )
+    )
+    row = result.one()
     return {
-        "total_alerts": total,
-        "unacknowledged": unacked,
-        "by_severity": by_severity,
+        "total_alerts": row.total,
+        "unacknowledged": row.unacked,
+        "by_severity": {sev.value: getattr(row, sev.value) for sev in SeverityLevel},
     }

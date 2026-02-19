@@ -28,7 +28,7 @@
          weighted confidence fusion
                 │
         ┌───────┴────────┐
-        │   Alert fired  │  → logger.warning  →  FastAPI  →  SQLite
+        │   Alert fired  │  → logger + SQLite  →  FastAPI
         └────────────────┘
 ```
 
@@ -165,8 +165,10 @@ Copy `.env.example` to `.env` and adjust as needed.
 | `WEIGHT_IFOREST` | `0.30` | Isolation Forest weight |
 | `WEIGHT_LSTM` | `0.20` | LSTM weight |
 | `WEIGHT_RULES` | `0.10` | Rules weight |
+| `LARGE_PAYLOAD_BYTES` | `10000` | Forward payload size (bytes) that triggers the large-payload rule |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./cnds.db` | SQLite or PostgreSQL URL |
 | `API_KEY` | _(empty)_ | Bearer token; leave empty to disable auth |
+| `CORS_ORIGINS` | _(empty)_ | Comma-separated allowed origins; defaults to `http://localhost:3000` |
 
 ---
 
@@ -196,6 +198,7 @@ Copy `.env.example` to `.env` and adjust as needed.
 │   │   ├── host_extractor.py    # 18 per-IP host features
 │   │   └── payload_analyzer.py  # Regex pattern matching (SQLi, XSS, LFI, …)
 │   ├── engines/
+│   │   ├── registry.py          # Shared engine singletons
 │   │   ├── supervised.py        # Random Forest wrapper
 │   │   ├── isolation_forest.py  # Isolation Forest wrapper
 │   │   ├── lstm_autoencoder.py  # LSTM Autoencoder wrapper
@@ -214,8 +217,7 @@ Copy `.env.example` to `.env` and adjust as needed.
     ├── test_flow_extractor.py
     ├── test_host_extractor.py
     ├── test_rules_engine.py
-    ├── test_ensemble_scorer.py
-    └── test_api.py
+    └── test_ensemble.py
 ```
 
 ---

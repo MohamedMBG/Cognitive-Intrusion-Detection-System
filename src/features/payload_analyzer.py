@@ -1,12 +1,12 @@
 """Payload pattern matching for application-layer attack detection.
 
 Adapted from cognitive-anomaly-detector. Uses regex with timeout protection
-to guard against ReDoS.
+via threading to remain safe in worker threads.
 """
 
 import re
-import signal
-from typing import List, Optional
+import threading
+from typing import List
 from scapy.all import Raw
 
 
@@ -24,21 +24,16 @@ MATCH_TIMEOUT_SECS = 1
 
 
 def _match_with_timeout(pattern: re.Pattern, data: bytes) -> bool:
-    """Match with SIGALRM timeout to prevent ReDoS hangs (Unix only)."""
-    try:
-        def _handler(sig, frame):
-            raise TimeoutError()
-        old = signal.signal(signal.SIGALRM, _handler)
-        signal.alarm(MATCH_TIMEOUT_SECS)
-        try:
-            result = bool(pattern.search(data))
-        finally:
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old)
-        return result
-    except (TimeoutError, AttributeError):
-        # AttributeError on Windows (no SIGALRM)
-        return False
+    """Match with thread-based timeout to prevent ReDoS hangs."""
+    result = [False]
+
+    def _search():
+        result[0] = bool(pattern.search(data))
+
+    t = threading.Thread(target=_search, daemon=True)
+    t.start()
+    t.join(timeout=MATCH_TIMEOUT_SECS)
+    return result[0]
 
 
 def analyze_payload(packet) -> List[str]:

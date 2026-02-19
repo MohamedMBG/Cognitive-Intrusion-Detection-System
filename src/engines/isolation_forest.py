@@ -59,9 +59,9 @@ class IsolationForestEngine:
             if self._scaler is not None:
                 vec = self._scaler.transform(vec)
             raw = float(self._model.decision_function(vec)[0])
-            # decision_function returns negative for anomalies (lower = worse)
-            # Normalise to [0,1]: score of -0.5 → 1.0, score of 0.5 → 0.0
-            score = 1.0 - (raw + 0.5) / 1.0
+            # decision_function: negative = anomaly, positive = normal.
+            # Map to [0,1] via sigmoid so extreme values retain granularity.
+            score = 1.0 / (1.0 + np.exp(5.0 * raw))  # steepness=5 centres transition at 0
             return float(np.clip(score, 0.0, 1.0))
         except Exception as e:
             logger.error("IsolationForestEngine score error: %s", e)
