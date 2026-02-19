@@ -76,3 +76,13 @@ def test_path_traversal_detected():
 
 def test_pattern_names_match_patterns():
     assert len(PATTERN_NAMES) == 6
+
+
+def test_extended_feature_names_length():
+    """EXTENDED_FEATURE_NAMES should be 76 flow + 10 payload = 86."""
+    from src.engines.supervised import EXTENDED_FEATURE_NAMES
+    from src.features.flow_extractor import FLOW_FEATURE_NAMES
+    from src.features.payload_analyzer import PAYLOAD_FEATURE_NAMES
+    assert len(EXTENDED_FEATURE_NAMES) == 86
+    assert EXTENDED_FEATURE_NAMES[:76] == FLOW_FEATURE_NAMES
+    assert EXTENDED_FEATURE_NAMES[76:] == PAYLOAD_FEATURE_NAMES

@@ -91,3 +91,68 @@ def test_expired_flows_collected():
     fe_mod.FLOW_TIMEOUT = original_timeout
     assert len(expired) == 1
     assert expired[0][1].shape == (76,)
+
+
+def test_fwd_payloads_accumulated():
+    """FlowRecord should store forward payload samples."""
+    rec = FlowRecord(key=("1.2.3.4", "5.6.7.8", 1234, 80, 6))
+    assert rec.fwd_payloads == []
+
+    from scapy.all import IP, TCP
+    pkt = MagicMock()
+    pkt.__len__ = lambda self: 200
+
+    ip = MagicMock()
+    ip.src = "1.2.3.4"
+    ip.dst = "5.6.7.8"
+    ip.proto = 6
+    ip.ihl = 5
+
+    tcp = MagicMock()
+    tcp.sport = 1234
+    tcp.dport = 80
+    tcp.flags = 0x18  # PSH+ACK
+    tcp.window = 65535
+    # Use a real bytes object wrapped so bytes() works
+    tcp.payload = b"A" * 50
+
+    def contains(layer):
+        return layer.__name__ in ("IP", "TCP")
+    pkt.__contains__ = lambda self, layer: contains(layer)
+    pkt.__getitem__ = lambda self, layer: ip if layer is IP else tcp
+
+    ts = time.time()
+    rec.add_packet(pkt, ts, is_forward=True)
+    assert len(rec.fwd_payloads) == 1
+    assert rec.fwd_payloads[0] == b"A" * 50
+
+
+def test_fwd_payloads_not_stored_for_backward():
+    """Backward packets should not add to fwd_payloads."""
+    rec = FlowRecord(key=("1.2.3.4", "5.6.7.8", 1234, 80, 6))
+
+    from scapy.all import IP, TCP
+    pkt = MagicMock()
+    pkt.__len__ = lambda self: 100
+
+    ip = MagicMock()
+    ip.src = "5.6.7.8"
+    ip.dst = "1.2.3.4"
+    ip.proto = 6
+    ip.ihl = 5
+
+    tcp = MagicMock()
+    tcp.sport = 80
+    tcp.dport = 1234
+    tcp.flags = 0x10  # ACK
+    tcp.window = 65535
+    tcp.payload = b"B" * 30
+
+    def contains(layer):
+        return layer.__name__ in ("IP", "TCP")
+    pkt.__contains__ = lambda self, layer: contains(layer)
+    pkt.__getitem__ = lambda self, layer: ip if layer is IP else tcp
+
+    ts = time.time()
+    rec.add_packet(pkt, ts, is_forward=False)
+    assert len(rec.fwd_payloads) == 0

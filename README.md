@@ -16,9 +16,9 @@
 [Dispatcher]  ── flow expiry ──►  on_flow_complete()
    ├─ FlowExtractor   → 76 CICFlowMeter flow features
    ├─ HostExtractor   → 18 per-IP host features
-   └─ PayloadAnalyzer → regex pattern matches
+   └─ PayloadAnalyzer → regex pattern matches + 10 numeric payload features
         │
-        ├─► [Supervised Engine]     Random Forest (76 flow features)
+        ├─► [Supervised Engine]     Random Forest (76 flow + 10 payload features)
         ├─► [Isolation Forest]      Novelty score  (18 host features)
         ├─► [LSTM Autoencoder]      Sequence score (18 host features)
         └─► [Rules Engine]          Threshold + pattern rules
@@ -166,6 +166,8 @@ Copy `.env.example` to `.env` and adjust as needed.
 | `WEIGHT_LSTM` | `0.20` | LSTM weight |
 | `WEIGHT_RULES` | `0.10` | Rules weight |
 | `LARGE_PAYLOAD_BYTES` | `10000` | Forward payload size (bytes) that triggers the large-payload rule |
+| `MAX_PAYLOAD_SAMPLES` | `50` | Max payload samples stored per flow for feature extraction |
+| `PAYLOAD_SAMPLE_BYTES` | `4096` | Max bytes kept per payload sample |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./cnds.db` | SQLite or PostgreSQL URL |
 | `API_KEY` | _(empty)_ | Bearer token; leave empty to disable auth |
 | `CORS_ORIGINS` | _(empty)_ | Comma-separated allowed origins; defaults to `http://localhost:3000` |
@@ -198,7 +200,7 @@ Copy `.env.example` to `.env` and adjust as needed.
 │   ├── features/
 │   │   ├── flow_extractor.py    # 76 CICFlowMeter-compatible features per flow
 │   │   ├── host_extractor.py    # 18 per-IP host features
-│   │   └── payload_analyzer.py  # Regex pattern matching (SQLi, XSS, LFI, …)
+│   │   └── payload_analyzer.py  # Regex pattern matching + numeric payload features
 │   ├── engines/
 │   │   ├── registry.py          # Shared engine singletons
 │   │   ├── supervised.py        # Random Forest wrapper

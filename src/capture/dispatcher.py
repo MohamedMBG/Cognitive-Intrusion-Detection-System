@@ -28,8 +28,9 @@ class Dispatcher:
     """Routes each packet to all feature extraction pipelines.
 
     Args:
-        flow_callback: Called with (FlowRecord, flow_features, host_features, payload_matches)
-                       when a flow expires. host_features may be None.
+        flow_callback: Called with (FlowRecord, flow_features, host_features,
+                       payload_matches, payload_features) when a flow expires.
+                       host_features may be None.
         flush_interval: How often (seconds) to check for expired flows.
     """
 
