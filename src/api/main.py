@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Cognitive Network Defense System API",
     description="Multi-engine network defense: supervised + unsupervised anomaly detection + rule-based heuristics",
-    version="0.2.0",
+    version="1.0.0",
     lifespan=lifespan,
 )
 
