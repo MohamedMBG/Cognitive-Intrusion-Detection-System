@@ -94,6 +94,8 @@ ADAPTIVE_MIN_SAMPLES     = int(os.getenv("ADAPTIVE_MIN_SAMPLES", "100"))
 # ── Notifications (Phase 8) ───────────────────────────────────────────────────
 WEBHOOK_URLS       = [u.strip() for u in os.getenv("WEBHOOK_URLS", "").split(",") if u.strip()]
 NOTIFY_MIN_SEVERITY = os.getenv("NOTIFY_MIN_SEVERITY", "high")  # minimum severity to notify
+TELEGRAM_BOT_TOKEN  = os.getenv("TELEGRAM_BOT_TOKEN", "")       # empty = disabled
+TELEGRAM_CHAT_ID    = os.getenv("TELEGRAM_CHAT_ID", "")
 
 # ── Rate limiting (Phase 8) ───────────────────────────────────────────────────
 RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "60"))   # per window

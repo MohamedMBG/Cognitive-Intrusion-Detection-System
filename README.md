@@ -217,6 +217,8 @@ Copy `.env.example` to `.env` and adjust as needed.
 | `ADAPTIVE_MIN_SAMPLES` | `100` | Min acknowledged alerts before adapting weights |
 | `WEBHOOK_URLS` | _(empty)_ | Comma-separated webhook/Slack notification URLs |
 | `NOTIFY_MIN_SEVERITY` | `high` | Minimum severity to trigger webhook notification |
+| `TELEGRAM_BOT_TOKEN` | _(empty)_ | Telegram bot token from @BotFather; empty disables |
+| `TELEGRAM_CHAT_ID` | _(empty)_ | Telegram chat/group ID to send alerts to |
 | `RATE_LIMIT_REQUESTS` | `60` | Max API requests per window per IP |
 | `RATE_LIMIT_WINDOW` | `60` | Rate limit window (seconds) |
 | `DNS_LOGGING_ENABLED` | `false` | Enable DNS query logging from captured traffic |

@@ -119,6 +119,46 @@ class TestNotifications:
             })
             mock_client_instance.post.assert_called_once()
 
+    @pytest.mark.asyncio
+    @patch("src.enrichment.notifications.WEBHOOK_URLS", [])
+    @patch("src.enrichment.notifications.TELEGRAM_BOT_TOKEN", "123:ABC")
+    @patch("src.enrichment.notifications.TELEGRAM_CHAT_ID", "456")
+    @patch("src.enrichment.notifications.NOTIFY_MIN_SEVERITY", "high")
+    async def test_notify_sends_telegram(self):
+        from src.enrichment.notifications import notify_alert
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+
+        mock_client_instance = AsyncMock()
+        mock_client_instance.post = AsyncMock(return_value=mock_response)
+        mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
+        mock_client_instance.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("src.enrichment.notifications.httpx.AsyncClient", return_value=mock_client_instance):
+            await notify_alert({
+                "severity": "critical",
+                "src_ip": "1.2.3.4",
+                "dst_ip": "5.6.7.8",
+                "ensemble_score": 0.95,
+                "attack_type": "DoS",
+                "triggered_rules": [],
+            })
+            mock_client_instance.post.assert_called_once()
+            call_args = mock_client_instance.post.call_args
+            assert "api.telegram.org" in call_args[0][0]
+            assert call_args[1]["json"]["chat_id"] == "456"
+
+    @pytest.mark.asyncio
+    @patch("src.enrichment.notifications.WEBHOOK_URLS", [])
+    @patch("src.enrichment.notifications.TELEGRAM_BOT_TOKEN", "")
+    @patch("src.enrichment.notifications.TELEGRAM_CHAT_ID", "")
+    @patch("src.enrichment.notifications.NOTIFY_MIN_SEVERITY", "high")
+    async def test_notify_noop_when_no_channels(self):
+        from src.enrichment.notifications import notify_alert
+        # Should not raise even with no channels configured
+        await notify_alert({"severity": "critical", "src_ip": "1.2.3.4"})
+
 
 # ── Rate Limiter ───────────────────────────────────────────────────────────────
 
