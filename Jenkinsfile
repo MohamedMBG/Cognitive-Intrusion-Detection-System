@@ -1,5 +1,5 @@
 pipeline {
-    agent any
+    agent { label 'agent-45' }
 
     options {
         buildDiscarder(logRotator(numToKeepStr: '5'))
@@ -84,37 +84,27 @@ pipeline {
 
         stage('SonarQube Analysis') {
             steps {
-                script {
-                    // Robust workspace path detection for Docker-in-Docker
-                    def hostWorkspace = env.WORKSPACE
-                    if (env.WORKSPACE.contains('/var/jenkins_home')) {
-                        hostWorkspace = env.WORKSPACE.replace('/var/jenkins_home', '/home/roberto/jenkins_home')
-                    }
-                    
-                    echo "Using host workspace path: ${hostWorkspace}"
-                    
-                    withCredentials([usernamePassword(
-                        credentialsId: 'sonarqube-credentials',
-                        usernameVariable: 'SONAR_USER',
-                        passwordVariable: 'SONAR_PASS'
-                    )]) {
-                        sh """
-                            docker run --rm \
-                                -e SONAR_USER="\$SONAR_USER" \
-                                -e SONAR_PASS="\$SONAR_PASS" \
-                                -v "${hostWorkspace}:/usr/src" \
-                                sonarsource/sonar-scanner-cli \
-                                -Dsonar.projectKey=cnds \
-                                -Dsonar.sources=src \
-                                -Dsonar.tests=tests \
-                                -Dsonar.python.version=3.11 \
-                                -Dsonar.python.coverage.reportPaths=coverage.xml \
-                                -Dsonar.host.url=http://192.168.1.86:9000 \
-                                -Dsonar.login="\$SONAR_USER" \
-                                -Dsonar.password="\$SONAR_PASS" \
-                                -Dsonar.scm.disabled=true
-                        """
-                    }
+                withCredentials([usernamePassword(
+                    credentialsId: 'sonarqube-credentials',
+                    usernameVariable: 'SONAR_USER',
+                    passwordVariable: 'SONAR_PASS'
+                )]) {
+                    sh """
+                        docker run --rm \
+                            -e SONAR_USER="\$SONAR_USER" \
+                            -e SONAR_PASS="\$SONAR_PASS" \
+                            -v "${env.WORKSPACE}:/usr/src" \
+                            sonarsource/sonar-scanner-cli \
+                            -Dsonar.projectKey=cnds \
+                            -Dsonar.sources=src \
+                            -Dsonar.tests=tests \
+                            -Dsonar.python.version=3.11 \
+                            -Dsonar.python.coverage.reportPaths=coverage.xml \
+                            -Dsonar.host.url=http://192.168.1.86:9000 \
+                            -Dsonar.login="\$SONAR_USER" \
+                            -Dsonar.password="\$SONAR_PASS" \
+                            -Dsonar.scm.disabled=true
+                    """
                 }
             }
         }
