@@ -329,11 +329,11 @@ Jenkins pipeline stages (see `Jenkinsfile`):
 
 ### v2.0 (planned)
 
-- [ ] PCAP replay mode — offline ingestion of `.pcap` files for threat hunting and model evaluation
+- [x] PCAP replay mode — offline ingestion of `.pcap` files for threat hunting and model evaluation
 - [ ] Alembic DB migrations — proper schema versioning for production deployments
 - [ ] Config validation — fail-fast on startup if weights don't sum to 1.0 or thresholds are out of range
-- [ ] API integration tests — end-to-end endpoint testing with in-memory SQLite
-- [ ] RBAC enforcement — wire `require_role()` to sensitive endpoints (suppression rules, incidents)
+- [x] API integration tests — end-to-end endpoint testing with in-memory SQLite
+- [x] RBAC enforcement — wire `require_role()` to sensitive endpoints (suppression rules, incidents)
 - [ ] Alert export — CSV/JSON bulk export endpoint for analyst reporting
 - [ ] Dashboard enhancements — top talkers view, attack type breakdown, timeline visualization
 - [ ] Model drift detection — alert when live traffic feature distributions diverge from training data
