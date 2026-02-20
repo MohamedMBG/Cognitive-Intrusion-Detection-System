@@ -110,16 +110,19 @@ Base URL: `http://localhost:8000`
 | `/health` | GET | Engine availability + capture stats |
 | `/api/predict` | POST | Run all engines on supplied features |
 | `/api/alerts` | GET | List alerts (filter: `severity`, `src_ip`, `acknowledged`) |
+| `/api/alerts/export` | GET | Export alerts as CSV/JSON (filter: `format`, `severity`, `hours`) |
+| `/api/alerts/trends` | GET | Alert counts bucketed by hour/day (filter: `hours`, `bucket`) |
 | `/api/alerts/{alert_id}` | GET | Get single alert by ID |
 | `/api/alerts/{alert_id}` | PATCH | Acknowledge alert, add notes, link to incident |
-| `/api/incidents` | GET / POST | Incident management |
+| `/api/incidents` | GET / POST | Incident management (POST requires admin/analyst) |
 | `/api/stats` | GET | Alert counts grouped by severity |
-| `/api/suppression-rules` | GET / POST | List or create alert suppression rules |
-| `/api/suppression-rules/{rule_id}` | DELETE | Remove a suppression rule |
+| `/api/suppression-rules` | GET / POST | List or create suppression rules (POST requires admin/analyst) |
+| `/api/suppression-rules/{rule_id}` | DELETE | Remove a suppression rule (requires admin) |
 | `/api/adaptive-weights` | GET | Compute adaptive engine weights from feedback |
 | `/api/dns-log` | GET | DNS query logs (filter: `src_ip`) |
-| `/api/alerts/trends` | GET | Alert counts bucketed by hour/day (filter: `hours`, `bucket`) |
 | `/api/auth/token` | POST | Issue JWT token (when `JWT_SECRET` is set) |
+| `/api/auth/users` | GET / POST | User management (requires admin) |
+| `/api/auth/users/{user_id}` | DELETE | Delete user (requires admin) |
 | `/ws/alerts` | WebSocket | Real-time alert stream |
 | `/metrics` | GET | Prometheus metrics (when `PROMETHEUS_ENABLED=true`) |
 | `/docs` | GET | Swagger UI (auto-generated) |
@@ -146,6 +149,18 @@ curl -X POST http://localhost:8000/api/predict \
 curl "http://localhost:8000/api/alerts?severity=high&limit=20"
 ```
 
+### Example: export alerts as CSV
+
+```bash
+curl "http://localhost:8000/api/alerts/export?format=csv&severity=high&hours=24" -o alerts.csv
+```
+
+### Example: PCAP replay for model evaluation
+
+```bash
+python scripts/pcap_replay.py data/test.pcap --labels data/labels.csv --output results.json
+```
+
 ---
 
 ## Testing
@@ -166,6 +181,8 @@ pytest tests/test_flow_extractor.py -v
 ## Configuration
 
 Copy `.env.example` to `.env` and adjust as needed.
+
+**Note:** Configuration is validated on startup. Invalid settings (e.g., weights not summing to 1.0) will cause a `ConfigurationError`.
 
 | Variable | Default | Description |
 |---|---|---|
