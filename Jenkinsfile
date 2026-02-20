@@ -24,7 +24,7 @@ pipeline {
         stage('Build Image') {
             steps {
                 echo 'Building Docker image...'
-                sh "docker build -t ${REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER} -t ${REGISTRY}/${IMAGE_NAME}:latest ."
+                sh "docker build -t ${REGISTRY}/${IMAGE_NAME}:${env.BUILD_NUMBER} -t ${REGISTRY}/${IMAGE_NAME}:latest ."
             }
         }
 
@@ -34,7 +34,7 @@ pipeline {
                     steps {
                         sh """
                         docker run --rm --user root \
-                            ${REGISTRY}/${IMAGE_NAME}:\${BUILD_NUMBER} \
+                            ${REGISTRY}/${IMAGE_NAME}:${env.BUILD_NUMBER} \
                             sh -c 'pip install --quiet flake8 && flake8 src/ --max-line-length=120 --count --statistics || true'
                         """
                     }
@@ -43,7 +43,7 @@ pipeline {
                     steps {
                         sh """
                         docker run --rm --user root \
-                            ${REGISTRY}/${IMAGE_NAME}:\${BUILD_NUMBER} \
+                            ${REGISTRY}/${IMAGE_NAME}:${env.BUILD_NUMBER} \
                             sh -c 'pip install --quiet safety && safety check -r requirements.txt --full-report || true'
                         """
                     }
@@ -56,10 +56,10 @@ pipeline {
                 script {
                     try {
                         sh """
-                        docker run --name test-cnds-\${BUILD_NUMBER} \
+                        docker run --name test-cnds-${env.BUILD_NUMBER} \
                             --user root \
                             -e DATABASE_URL=sqlite+aiosqlite:////tmp/test.db \
-                            ${REGISTRY}/${IMAGE_NAME}:\${BUILD_NUMBER} \
+                            ${REGISTRY}/${IMAGE_NAME}:${env.BUILD_NUMBER} \
                             python -m pytest tests/ -v \
                                 --junitxml=test-results.xml \
                                 --cov=src \
@@ -68,9 +68,9 @@ pipeline {
                                 --disable-warnings
                         """
                     } finally {
-                        sh "docker cp test-cnds-\${BUILD_NUMBER}:/app/test-results.xml \${WORKSPACE}/test-results.xml || true"
-                        sh "docker cp test-cnds-\${BUILD_NUMBER}:/app/coverage.xml \${WORKSPACE}/coverage.xml || true"
-                        sh "docker rm test-cnds-\${BUILD_NUMBER} || true"
+                        sh "docker cp test-cnds-${env.BUILD_NUMBER}:/app/test-results.xml ${env.WORKSPACE}/test-results.xml || true"
+                        sh "docker cp test-cnds-${env.BUILD_NUMBER}:/app/coverage.xml ${env.WORKSPACE}/coverage.xml || true"
+                        sh "docker rm test-cnds-${env.BUILD_NUMBER} || true"
                     }
                 }
             }
@@ -100,6 +100,8 @@ pipeline {
                     )]) {
                         sh """
                             docker run --rm \
+                                -e SONAR_USER="\$SONAR_USER" \
+                                -e SONAR_PASS="\$SONAR_PASS" \
                                 -v "${hostWorkspace}:/usr/src" \
                                 sonarsource/sonar-scanner-cli \
                                 -Dsonar.projectKey=cnds \
@@ -108,8 +110,8 @@ pipeline {
                                 -Dsonar.python.version=3.11 \
                                 -Dsonar.python.coverage.reportPaths=coverage.xml \
                                 -Dsonar.host.url=http://192.168.1.86:9000 \
-                                -Dsonar.login=${SONAR_USER} \
-                                -Dsonar.password=${SONAR_PASS} \
+                                -Dsonar.login="\$SONAR_USER" \
+                                -Dsonar.password="\$SONAR_PASS" \
                                 -Dsonar.scm.disabled=true
                         """
                     }
@@ -120,7 +122,7 @@ pipeline {
         stage('Push to Registry') {
             steps {
                 echo "Pushing image to ${REGISTRY}..."
-                sh "docker push ${REGISTRY}/${IMAGE_NAME}:\${BUILD_NUMBER}"
+                sh "docker push ${REGISTRY}/${IMAGE_NAME}:${env.BUILD_NUMBER}"
                 sh "docker push ${REGISTRY}/${IMAGE_NAME}:latest"
             }
         }
@@ -129,7 +131,7 @@ pipeline {
     post {
         always {
             sh 'rm -f test-results.xml coverage.xml || true'
-            sh "docker rmi ${REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER} || true"
+            sh "docker rmi ${REGISTRY}/${IMAGE_NAME}:${env.BUILD_NUMBER} || true"
             cleanWs()
         }
         success {
