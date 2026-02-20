@@ -331,11 +331,11 @@ Jenkins pipeline stages (see `Jenkinsfile`):
 
 - [x] PCAP replay mode — offline ingestion of `.pcap` files for threat hunting and model evaluation
 - [ ] Alembic DB migrations — proper schema versioning for production deployments
-- [ ] Config validation — fail-fast on startup if weights don't sum to 1.0 or thresholds are out of range
+- [x] Config validation — fail-fast on startup if weights don't sum to 1.0 or thresholds are out of range
 - [x] API integration tests — end-to-end endpoint testing with in-memory SQLite
 - [x] RBAC enforcement — wire `require_role()` to sensitive endpoints (suppression rules, incidents)
-- [ ] Alert export — CSV/JSON bulk export endpoint for analyst reporting
-- [ ] Dashboard enhancements — top talkers view, attack type breakdown, timeline visualization
+- [x] Alert export — CSV/JSON bulk export endpoint for analyst reporting
+- [x] Dashboard enhancements — top talkers view, attack type breakdown, timeline visualization
 - [ ] Model drift detection — alert when live traffic feature distributions diverge from training data
 - [ ] Feedback-driven retraining — analyst TP/FP labels → accumulated dataset → automated retraining via MLflow
 - [ ] ONNX Runtime for LSTM — 2-5x inference speedup over raw PyTorch

@@ -1,6 +1,43 @@
 """Configuration for the Cognitive Network Defense System (CNDS)."""
 
 import os
+import sys
+import logging
+
+_logger = logging.getLogger(__name__)
+
+
+class ConfigurationError(Exception):
+    """Raised when configuration validation fails."""
+    pass
+
+
+def _validate_config():
+    """Validate configuration on module load. Raises ConfigurationError on failure."""
+    errors = []
+
+    # Validate engine weights sum to 1.0
+    weight_sum = WEIGHT_SUPERVISED + WEIGHT_IFOREST + WEIGHT_LSTM + WEIGHT_RULES
+    if not (0.99 <= weight_sum <= 1.01):
+        errors.append(f"Engine weights must sum to 1.0, got {weight_sum:.3f}")
+
+    # Validate thresholds are in valid ranges
+    if not (0.0 <= ENSEMBLE_THRESHOLD <= 1.0):
+        errors.append(f"ENSEMBLE_THRESHOLD must be in [0,1], got {ENSEMBLE_THRESHOLD}")
+
+    if not (0.0 < CALIBRATION_TEMPERATURE <= 10.0):
+        errors.append(f"CALIBRATION_TEMPERATURE must be in (0,10], got {CALIBRATION_TEMPERATURE}")
+
+    if FLOW_TIMEOUT <= 0:
+        errors.append(f"FLOW_TIMEOUT must be positive, got {FLOW_TIMEOUT}")
+
+    if PACKET_WORKERS < 1:
+        errors.append(f"PACKET_WORKERS must be >= 1, got {PACKET_WORKERS}")
+
+    if errors:
+        msg = "Configuration validation failed:\n  - " + "\n  - ".join(errors)
+        raise ConfigurationError(msg)
+
 
 # ── Capture ─────────────────────────────────────────────────────────────────
 CAPTURE_INTERFACE = os.getenv("CAPTURE_INTERFACE", None)   # None = auto
@@ -111,3 +148,6 @@ CONFIDENCE_DECAY_WINDOW = int(os.getenv("CONFIDENCE_DECAY_WINDOW", "300"))    # 
 # ── IP allowlist / blocklist (Phase 9) ────────────────────────────────────────
 IP_ALLOWLIST = set(filter(None, os.getenv("IP_ALLOWLIST", "").split(",")))
 IP_BLOCKLIST = set(filter(None, os.getenv("IP_BLOCKLIST", "").split(",")))
+
+# ── Validate configuration on import ──────────────────────────────────────────
+_validate_config()

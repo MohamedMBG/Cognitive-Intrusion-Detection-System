@@ -37,6 +37,83 @@ async def list_alerts(
     return result.scalars().all()
 
 
+@router.get("/alerts/export")
+async def export_alerts(
+    format: str = Query("json", pattern="^(json|csv)$"),
+    severity: Optional[str] = None,
+    src_ip: Optional[str] = None,
+    hours: Optional[int] = Query(None, ge=1),
+    limit: int = Query(1000, le=10000),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export alerts as JSON or CSV for analyst reporting."""
+    from datetime import datetime, timedelta, timezone
+    from fastapi.responses import StreamingResponse
+    import csv
+    import io
+    import json
+
+    q = select(Alert).order_by(desc(Alert.timestamp)).limit(limit)
+    if severity:
+        q = q.where(Alert.severity == severity)
+    if src_ip:
+        q = q.where(Alert.src_ip == src_ip)
+    if hours:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        q = q.where(Alert.timestamp >= cutoff)
+
+    result = await db.execute(q)
+    alerts = result.scalars().all()
+
+    if format == "csv":
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["id", "timestamp", "src_ip", "dst_ip", "src_port", "dst_port",
+                         "protocol", "attack_type", "severity", "ensemble_score",
+                         "triggered_rules", "acknowledged"])
+        for a in alerts:
+            writer.writerow([
+                a.id, a.timestamp.isoformat() if a.timestamp else "",
+                a.src_ip, a.dst_ip, a.src_port, a.dst_port, a.protocol,
+                a.attack_type, a.severity.value if a.severity else "",
+                a.ensemble_score, ";".join(a.triggered_rules or []), a.acknowledged,
+            ])
+        output.seek(0)
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=alerts.csv"},
+        )
+
+    # JSON format
+    data = [{
+        "id": a.id,
+        "timestamp": a.timestamp.isoformat() if a.timestamp else None,
+        "src_ip": a.src_ip,
+        "dst_ip": a.dst_ip,
+        "src_port": a.src_port,
+        "dst_port": a.dst_port,
+        "protocol": a.protocol,
+        "attack_type": a.attack_type,
+        "severity": a.severity.value if a.severity else None,
+        "ensemble_score": a.ensemble_score,
+        "engine_scores": a.engine_scores,
+        "triggered_rules": a.triggered_rules,
+        "acknowledged": a.acknowledged,
+        "notes": a.notes,
+        "src_geo": a.src_geo,
+    } for a in alerts]
+
+    output = io.StringIO()
+    json.dump(data, output, indent=2)
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="application/json",
+        headers={"Content-Disposition": "attachment; filename=alerts.json"},
+    )
+
+
 @router.get("/alerts/trends")
 async def alert_trends(
     hours: int = Query(24, ge=1, le=168),

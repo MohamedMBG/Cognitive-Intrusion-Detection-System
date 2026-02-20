@@ -179,3 +179,49 @@ async def test_alert_trends(client, test_session):
     assert resp.status_code == 200
     data = resp.json()
     assert data["bucket"] == "hour"
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_json(client, test_session):
+    from datetime import datetime, timezone
+    test_session.add(Alert(
+        timestamp=datetime.now(timezone.utc),
+        src_ip="10.0.0.1",
+        severity=SeverityLevel.HIGH,
+        attack_type="DoS",
+    ))
+    await test_session.commit()
+
+    resp = await client.get("/api/alerts/export?format=json")
+    assert resp.status_code == 200
+    assert "application/json" in resp.headers.get("content-type", "")
+    assert "attachment" in resp.headers.get("content-disposition", "")
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_csv(client, test_session):
+    from datetime import datetime, timezone
+    test_session.add(Alert(
+        timestamp=datetime.now(timezone.utc),
+        src_ip="10.0.0.2",
+        severity=SeverityLevel.MEDIUM,
+    ))
+    await test_session.commit()
+
+    resp = await client.get("/api/alerts/export?format=csv")
+    assert resp.status_code == 200
+    assert "text/csv" in resp.headers.get("content-type", "")
+    content = resp.text
+    assert "src_ip" in content
+    assert "10.0.0.2" in content
+
+
+@pytest.mark.asyncio
+async def test_export_alerts_with_filters(client, test_session):
+    from datetime import datetime, timezone
+    test_session.add(Alert(timestamp=datetime.now(timezone.utc), src_ip="1.1.1.1", severity=SeverityLevel.LOW))
+    test_session.add(Alert(timestamp=datetime.now(timezone.utc), src_ip="2.2.2.2", severity=SeverityLevel.HIGH))
+    await test_session.commit()
+
+    resp = await client.get("/api/alerts/export?format=json&severity=high")
+    assert resp.status_code == 200
