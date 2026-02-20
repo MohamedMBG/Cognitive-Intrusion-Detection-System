@@ -3,7 +3,7 @@
 import pytest
 import pytest_asyncio
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
@@ -70,7 +70,7 @@ class TestIsEnabled:
         assert is_enabled()
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="function")
 async def auth_test_engine():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
     async with engine.begin() as conn:
@@ -79,14 +79,14 @@ async def auth_test_engine():
     await engine.dispose()
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="function")
 async def auth_test_session(auth_test_engine):
     async_session = async_sessionmaker(auth_test_engine, expire_on_commit=False, class_=AsyncSession)
     async with async_session() as session:
         yield session
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="function")
 async def auth_client(auth_test_engine):
     async_session = async_sessionmaker(auth_test_engine, expire_on_commit=False, class_=AsyncSession)
 
@@ -95,9 +95,10 @@ async def auth_client(auth_test_engine):
             yield session
 
     app.dependency_overrides[get_db] = override_get_db
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
+    with patch("src.api.main.init_db", new_callable=AsyncMock):
+        transport = ASGITransport(app=app, raise_app_exceptions=False)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            yield ac
     app.dependency_overrides.clear()
 
 
@@ -137,86 +138,86 @@ async def test_authenticate_user_not_found(auth_test_session):
 
 
 @pytest.mark.asyncio
-@patch("src.api.auth.JWT_SECRET", "testsecret")
 async def test_login_endpoint_success(auth_client, auth_test_session):
-    user = User(
-        username="loginuser",
-        password_hash=hash_password("loginpass"),
-        role="analyst",
-    )
-    auth_test_session.add(user)
-    await auth_test_session.commit()
+    with patch("src.api.auth.JWT_SECRET", "testsecret"):
+        user = User(
+            username="loginuser",
+            password_hash=hash_password("loginpass"),
+            role="analyst",
+        )
+        auth_test_session.add(user)
+        await auth_test_session.commit()
 
-    resp = await auth_client.post("/api/auth/token", json={
-        "username": "loginuser",
-        "password": "loginpass",
-    })
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "access_token" in data
-    assert data["token_type"] == "bearer"
+        resp = await auth_client.post("/api/auth/token", json={
+            "username": "loginuser",
+            "password": "loginpass",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "access_token" in data
+        assert data["token_type"] == "bearer"
 
 
 @pytest.mark.asyncio
-@patch("src.api.auth.JWT_SECRET", "testsecret")
 async def test_login_endpoint_invalid_credentials(auth_client):
-    resp = await auth_client.post("/api/auth/token", json={
-        "username": "nobody",
-        "password": "wrongpass",
-    })
-    assert resp.status_code == 401
+    with patch("src.api.auth.JWT_SECRET", "testsecret"):
+        resp = await auth_client.post("/api/auth/token", json={
+            "username": "nobody",
+            "password": "wrongpass",
+        })
+        assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
-@patch("src.api.auth.JWT_SECRET", "")
 async def test_login_endpoint_jwt_disabled(auth_client):
-    resp = await auth_client.post("/api/auth/token", json={
-        "username": "user",
-        "password": "pass",
-    })
-    assert resp.status_code == 501
+    with patch("src.api.auth.JWT_SECRET", ""):
+        resp = await auth_client.post("/api/auth/token", json={
+            "username": "user",
+            "password": "pass",
+        })
+        assert resp.status_code == 501
 
 
 @pytest.mark.asyncio
-@patch("src.api.auth.JWT_SECRET", "testsecret")
 async def test_user_management_requires_admin(auth_client, auth_test_session):
-    # Create admin user
-    admin = User(username="admin", password_hash=hash_password("adminpass"), role="admin")
-    auth_test_session.add(admin)
-    await auth_test_session.commit()
+    with patch("src.api.auth.JWT_SECRET", "testsecret"):
+        # Create admin user
+        admin = User(username="admin", password_hash=hash_password("adminpass"), role="admin")
+        auth_test_session.add(admin)
+        await auth_test_session.commit()
 
-    # Get admin token
-    resp = await auth_client.post("/api/auth/token", json={"username": "admin", "password": "adminpass"})
-    token = resp.json()["access_token"]
+        # Get admin token
+        resp = await auth_client.post("/api/auth/token", json={"username": "admin", "password": "adminpass"})
+        token = resp.json()["access_token"]
 
-    # Create user as admin
-    resp = await auth_client.post(
-        "/api/auth/users",
-        json={"username": "newuser", "password": "newpass", "role": "viewer"},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert resp.status_code == 200
-    assert resp.json()["username"] == "newuser"
+        # Create user as admin
+        resp = await auth_client.post(
+            "/api/auth/users",
+            json={"username": "newuser", "password": "newpass", "role": "viewer"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["username"] == "newuser"
 
-    # List users
-    resp = await auth_client.get("/api/auth/users", headers={"Authorization": f"Bearer {token}"})
-    assert resp.status_code == 200
-    assert len(resp.json()) == 2
+        # List users
+        resp = await auth_client.get("/api/auth/users", headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200
+        assert len(resp.json()) == 2
 
 
 @pytest.mark.asyncio
-@patch("src.api.auth.JWT_SECRET", "testsecret")
 async def test_viewer_cannot_create_users(auth_client, auth_test_session):
-    viewer = User(username="viewer", password_hash=hash_password("viewerpass"), role="viewer")
-    auth_test_session.add(viewer)
-    await auth_test_session.commit()
+    with patch("src.api.auth.JWT_SECRET", "testsecret"):
+        viewer = User(username="viewer", password_hash=hash_password("viewerpass"), role="viewer")
+        auth_test_session.add(viewer)
+        await auth_test_session.commit()
 
-    resp = await auth_client.post("/api/auth/token", json={"username": "viewer", "password": "viewerpass"})
-    token = resp.json()["access_token"]
+        resp = await auth_client.post("/api/auth/token", json={"username": "viewer", "password": "viewerpass"})
+        token = resp.json()["access_token"]
 
-    resp = await auth_client.post(
-        "/api/auth/users",
-        json={"username": "hacker", "password": "hack", "role": "admin"},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert resp.status_code == 403
+        resp = await auth_client.post(
+            "/api/auth/users",
+            json={"username": "hacker", "password": "hack", "role": "admin"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 403

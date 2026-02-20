@@ -4,14 +4,58 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
+from contextlib import asynccontextmanager
 
 from src.api.models import Base, Alert, SeverityLevel
-from src.api.main import app
 from src.api.database import get_db
 
 
-@pytest_asyncio.fixture
+# Create a test app without the lifespan that calls init_db
+def create_test_app():
+    """Create a fresh FastAPI app for testing."""
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+    from src.api.routers import alerts, predict
+    from src.api.routers.websocket import router as ws_router
+    from src.api.routers.auth import router as auth_router
+
+    @asynccontextmanager
+    async def test_lifespan(app: FastAPI):
+        yield
+
+    test_app = FastAPI(lifespan=test_lifespan)
+    test_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_headers=["*"],
+    )
+    test_app.include_router(alerts.router)
+    test_app.include_router(predict.router)
+    test_app.include_router(ws_router)
+    test_app.include_router(auth_router)
+
+    # Add health endpoint
+    from src.engines.registry import supervised, iforest, lstm
+
+    @test_app.get("/health")
+    async def health():
+        return {
+            "status": "ok",
+            "engines": {
+                "supervised": supervised.is_available,
+                "isolation_forest": iforest.is_available,
+                "lstm": lstm.is_available,
+                "rules": True,
+            },
+            "capture_stats": None,
+        }
+
+    return test_app
+
+
+@pytest_asyncio.fixture(loop_scope="function")
 async def test_engine():
     """Create in-memory SQLite engine."""
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
@@ -21,7 +65,7 @@ async def test_engine():
     await engine.dispose()
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="function")
 async def test_session(test_engine):
     """Create test database session."""
     async_session = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
@@ -29,20 +73,21 @@ async def test_session(test_engine):
         yield session
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="function")
 async def client(test_engine):
     """Create test client with overridden database."""
+    test_app = create_test_app()
     async_session = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
 
     async def override_get_db():
         async with async_session() as session:
             yield session
 
-    app.dependency_overrides[get_db] = override_get_db
-    transport = ASGITransport(app=app)
+    test_app.dependency_overrides[get_db] = override_get_db
+    transport = ASGITransport(app=test_app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
-    app.dependency_overrides.clear()
+    test_app.dependency_overrides.clear()
 
 
 @pytest.mark.asyncio

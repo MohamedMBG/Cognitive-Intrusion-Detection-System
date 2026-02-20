@@ -1,6 +1,5 @@
 """Shared pytest fixtures for CNDS tests."""
 
-import asyncio
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
@@ -8,15 +7,11 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from src.api.models import Base
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create event loop for async tests."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+# Configure pytest-asyncio
+pytest_plugins = ('pytest_asyncio',)
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="function")
 async def test_db():
     """Create in-memory SQLite database for testing."""
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
