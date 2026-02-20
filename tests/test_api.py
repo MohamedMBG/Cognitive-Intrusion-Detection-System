@@ -1,0 +1,181 @@
+"""API integration tests using httpx + in-memory SQLite."""
+
+import pytest
+import pytest_asyncio
+from httpx import AsyncClient, ASGITransport
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from unittest.mock import patch
+
+from src.api.models import Base, Alert, SeverityLevel
+from src.api.main import app
+from src.api.database import get_db
+
+
+@pytest_asyncio.fixture
+async def test_engine():
+    """Create in-memory SQLite engine."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield engine
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def test_session(test_engine):
+    """Create test database session."""
+    async_session = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with async_session() as session:
+        yield session
+
+
+@pytest_asyncio.fixture
+async def client(test_engine):
+    """Create test client with overridden database."""
+    async_session = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+
+    async def override_get_db():
+        async with async_session() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = override_get_db
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_health_endpoint(client):
+    resp = await client.get("/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert "engines" in data
+
+
+@pytest.mark.asyncio
+async def test_list_alerts_empty(client):
+    resp = await client.get("/api/alerts")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+@pytest.mark.asyncio
+async def test_create_and_list_alerts(client, test_session):
+    """Insert alert directly and verify list endpoint."""
+    from datetime import datetime, timezone
+    alert = Alert(
+        timestamp=datetime.now(timezone.utc),
+        src_ip="192.168.1.100",
+        dst_ip="10.0.0.1",
+        severity=SeverityLevel.HIGH,
+        ensemble_score=0.85,
+    )
+    test_session.add(alert)
+    await test_session.commit()
+
+    resp = await client.get("/api/alerts")
+    assert resp.status_code == 200
+    alerts = resp.json()
+    assert len(alerts) == 1
+    assert alerts[0]["src_ip"] == "192.168.1.100"
+
+
+@pytest.mark.asyncio
+async def test_get_alert_not_found(client):
+    resp = await client.get("/api/alerts/9999")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_alert(client, test_session):
+    from datetime import datetime, timezone
+    alert = Alert(
+        timestamp=datetime.now(timezone.utc),
+        src_ip="10.0.0.5",
+        severity=SeverityLevel.MEDIUM,
+    )
+    test_session.add(alert)
+    await test_session.commit()
+    await test_session.refresh(alert)
+
+    resp = await client.patch(f"/api/alerts/{alert.id}", json={"acknowledged": True, "notes": "Test note"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["acknowledged"] is True
+    assert data["notes"] == "Test note"
+
+
+@pytest.mark.asyncio
+async def test_stats_endpoint(client, test_session):
+    from datetime import datetime, timezone
+    for sev in [SeverityLevel.LOW, SeverityLevel.HIGH, SeverityLevel.HIGH]:
+        test_session.add(Alert(timestamp=datetime.now(timezone.utc), src_ip="1.2.3.4", severity=sev))
+    await test_session.commit()
+
+    resp = await client.get("/api/stats")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total_alerts"] == 3
+    assert data["by_severity"]["high"] == 2
+
+
+@pytest.mark.asyncio
+async def test_predict_allowlisted_ip(client):
+    """Allowlisted IPs should return score=0, is_anomaly=False."""
+    with patch("src.api.routers.predict.is_allowlisted", return_value=True):
+        resp = await client.post("/api/predict", json={
+            "src_ip": "192.168.1.1",
+            "host_features": [0.0] * 18,
+        })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ensemble_score"] == 0.0
+    assert data["is_anomaly"] is False
+
+
+@pytest.mark.asyncio
+async def test_predict_blocklisted_ip(client):
+    """Blocklisted IPs should return score=1, is_anomaly=True."""
+    with patch("src.api.routers.predict.is_blocklisted", return_value=True), \
+         patch("src.api.routers.predict.is_allowlisted", return_value=False):
+        resp = await client.post("/api/predict", json={
+            "src_ip": "192.168.1.1",
+            "host_features": [0.0] * 18,
+        })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ensemble_score"] == 1.0
+    assert data["is_anomaly"] is True
+    assert data["attack_type"] == "Blocklisted"
+
+
+@pytest.mark.asyncio
+async def test_incidents_crud(client):
+    # Create
+    resp = await client.post("/api/incidents", json={
+        "title": "Test Incident",
+        "description": "Testing",
+        "severity": "high",
+    })
+    assert resp.status_code == 201
+    inc = resp.json()
+    assert inc["title"] == "Test Incident"
+
+    # List
+    resp = await client.get("/api/incidents")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 1
+
+
+@pytest.mark.asyncio
+async def test_alert_trends(client, test_session):
+    from datetime import datetime, timezone
+    test_session.add(Alert(timestamp=datetime.now(timezone.utc), src_ip="1.1.1.1", severity=SeverityLevel.LOW))
+    await test_session.commit()
+
+    resp = await client.get("/api/alerts/trends?hours=1&bucket=hour")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["bucket"] == "hour"

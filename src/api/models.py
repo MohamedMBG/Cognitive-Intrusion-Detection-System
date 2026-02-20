@@ -90,3 +90,15 @@ class SuppressionRule(Base):
     reason      = Column(Text, nullable=True)
     created_at  = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     expires_at  = Column(DateTime, nullable=False, index=True)
+
+
+class User(Base):
+    """User accounts for JWT authentication."""
+    __tablename__ = "users"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    username      = Column(String(100), unique=True, index=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    role          = Column(String(20), default="viewer")  # admin, analyst, viewer
+    is_active     = Column(Boolean, default=True)
+    created_at    = Column(DateTime, default=lambda: datetime.now(timezone.utc))

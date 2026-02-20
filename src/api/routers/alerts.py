@@ -11,6 +11,7 @@ from ..schemas import (
     AlertOut, AlertUpdate, IncidentCreate, IncidentOut,
     SuppressionRuleCreate, SuppressionRuleOut,
 )
+from ..auth import require_role
 
 router = APIRouter(prefix="/api", tags=["alerts"])
 
@@ -34,6 +35,35 @@ async def list_alerts(
     q = q.offset(offset).limit(limit)
     result = await db.execute(q)
     return result.scalars().all()
+
+
+@router.get("/alerts/trends")
+async def alert_trends(
+    hours: int = Query(24, ge=1, le=168),
+    bucket: str = Query("hour", pattern="^(hour|day)$"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return alert counts bucketed by hour or day."""
+    from datetime import datetime, timedelta, timezone
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    result = await db.execute(
+        select(Alert.timestamp, Alert.severity).where(Alert.timestamp >= cutoff)
+    )
+    rows = result.all()
+
+    buckets: dict = {}
+    for ts, sev in rows:
+        if bucket == "hour":
+            key = ts.strftime("%Y-%m-%dT%H:00:00Z")
+        else:
+            key = ts.strftime("%Y-%m-%dT00:00:00Z")
+        if key not in buckets:
+            buckets[key] = {"total": 0, "by_severity": {}}
+        buckets[key]["total"] += 1
+        sev_val = sev.value if hasattr(sev, "value") else sev
+        buckets[key]["by_severity"][sev_val] = buckets[key]["by_severity"].get(sev_val, 0) + 1
+
+    return {"bucket": bucket, "hours": hours, "data": buckets}
 
 
 @router.get("/alerts/{alert_id}", response_model=AlertOut)
@@ -77,7 +107,8 @@ async def list_incidents(
     return result.scalars().all()
 
 
-@router.post("/incidents", response_model=IncidentOut, status_code=201)
+@router.post("/incidents", response_model=IncidentOut, status_code=201,
+              dependencies=[Depends(require_role("admin", "analyst"))])
 async def create_incident(body: IncidentCreate, db: AsyncSession = Depends(get_db)):
     inc = Incident(
         title=body.title,
@@ -124,7 +155,8 @@ async def list_suppression_rules(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
-@router.post("/suppression-rules", response_model=SuppressionRuleOut, status_code=201)
+@router.post("/suppression-rules", response_model=SuppressionRuleOut, status_code=201,
+              dependencies=[Depends(require_role("admin", "analyst"))])
 async def create_suppression_rule(
     body: SuppressionRuleCreate,
     db: AsyncSession = Depends(get_db),
@@ -144,7 +176,8 @@ async def create_suppression_rule(
     return rule
 
 
-@router.delete("/suppression-rules/{rule_id}", status_code=204)
+@router.delete("/suppression-rules/{rule_id}", status_code=204,
+               dependencies=[Depends(require_role("admin"))])
 async def delete_suppression_rule(rule_id: int, db: AsyncSession = Depends(get_db)):
     rule = await db.get(SuppressionRule, rule_id)
     if not rule:
@@ -172,34 +205,3 @@ async def get_dns_logs(src_ip: Optional[str] = None):
     if src_ip:
         return {"src_ip": src_ip, "queries": get_dns_log(src_ip)}
     return get_all_logs()
-
-
-# ── Alert Trends (Phase 9) ────────────────────────────────────────────────────
-
-@router.get("/alerts/trends")
-async def alert_trends(
-    hours: int = Query(24, ge=1, le=168),
-    bucket: str = Query("hour", regex="^(hour|day)$"),
-    db: AsyncSession = Depends(get_db),
-):
-    """Return alert counts bucketed by hour or day."""
-    from datetime import datetime, timedelta, timezone
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
-    result = await db.execute(
-        select(Alert.timestamp, Alert.severity).where(Alert.timestamp >= cutoff)
-    )
-    rows = result.all()
-
-    buckets: dict = {}
-    for ts, sev in rows:
-        if bucket == "hour":
-            key = ts.strftime("%Y-%m-%dT%H:00:00Z")
-        else:
-            key = ts.strftime("%Y-%m-%dT00:00:00Z")
-        if key not in buckets:
-            buckets[key] = {"total": 0, "by_severity": {}}
-        buckets[key]["total"] += 1
-        sev_val = sev.value if hasattr(sev, "value") else sev
-        buckets[key]["by_severity"][sev_val] = buckets[key]["by_severity"].get(sev_val, 0) + 1
-
-    return {"bucket": bucket, "hours": hours, "data": buckets}

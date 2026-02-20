@@ -10,6 +10,8 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRE_MINUTES
 
@@ -22,6 +24,18 @@ ROLES = {"admin", "analyst", "viewer"}
 
 def is_enabled() -> bool:
     return bool(JWT_SECRET)
+
+
+def hash_password(password: str) -> str:
+    """Hash password using bcrypt."""
+    import bcrypt
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def verify_password(password: str, hashed: str) -> bool:
+    """Verify password against bcrypt hash."""
+    import bcrypt
+    return bcrypt.checkpw(password.encode(), hashed.encode())
 
 
 def create_token(subject: str, role: str = "viewer") -> str:
@@ -45,6 +59,16 @@ def decode_token(token: str) -> dict:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+
+async def authenticate_user(db: AsyncSession, username: str, password: str):
+    """Validate credentials against user store."""
+    from .models import User
+    result = await db.execute(select(User).where(User.username == username, User.is_active == True))
+    user = result.scalar_one_or_none()
+    if user and verify_password(password, user.password_hash):
+        return user
+    return None
 
 
 async def get_current_user(
