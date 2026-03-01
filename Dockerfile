@@ -1,4 +1,4 @@
-FROM python:3.11.8-slim
+FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpcap-dev gcc g++ \
@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir --timeout=300 --retries=5 -r requirements.txt
 COPY . .
 
 RUN useradd -m -u 1000 ids
-RUN mkdir -p models && chown ids:ids models
+RUN mkdir -p models data && chown ids:ids models data
 
 EXPOSE 8000
 
