@@ -51,6 +51,8 @@ Any missing engine has its weight redistributed proportionally across the active
 ### 1. Install
 
 ```bash
+git clone https://github.com/RobertoDeLaCamara/Cognitive-Intrusion-Detection-System.git
+cd Cognitive-Intrusion-Detection-System
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
