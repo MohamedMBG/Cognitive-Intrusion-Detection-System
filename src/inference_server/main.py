@@ -4,14 +4,17 @@ from fastapi.responses import FileResponse, JSONResponse
 import pandas as pd
 import os
 import json
+import time
 import numpy as np
 import logging
 from dotenv import load_dotenv
 
 from .schemas import PredictionRequest
-from .database import init_db, close_db, health_check as db_health_check, is_db_available, get_db
+from .database import init_db, close_db, is_db_available, get_db
 from .alert_service import alert_service
 from .routers import alerts, incidents, dashboard
+from .routers.health import router as health_router, set_startup_time
+from .engine_registry import engine_registry
 from sqlalchemy.ext.asyncio import AsyncSession
 import yaml
 
@@ -50,6 +53,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Include routers
+app.include_router(health_router)
 app.include_router(alerts.router)
 app.include_router(incidents.router)
 app.include_router(dashboard.router)
@@ -88,26 +92,7 @@ async def get_openapi_yaml():
         raise HTTPException(status_code=404, detail="OpenAPI YAML file not found")
 
 
-@app.get("/health")
-async def health():
-    """
-    Health check endpoint for the inference server.
-
-    :return: A JSON response with status, model availability, and database health.
-    """
-    db_status = await db_health_check()
-    
-    overall_status = "healthy"
-    if db_status.get("database") == "unavailable":
-        overall_status = "degraded"  # Service works without DB
-    elif db_status.get("database") == "unhealthy":
-        overall_status = "unhealthy"
-    
-    return {
-        "status": overall_status,
-        "model_initialized": model_manager.initialized,
-        "database": db_status
-    }
+# /health is now served by routers/health.py
 
 import mlflow
 from mlflow.exceptions import MlflowException
@@ -235,20 +220,47 @@ async def predict(features: PredictionRequest, db: AsyncSession = Depends(get_db
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup"""
+    # Record startup time (monotonic clock) for uptime tracking
+    set_startup_time(time.monotonic())
+
     # Initialize database
     logger.info("Initializing database...")
     db_success = await init_db()
-    
+
     if db_success:
         logger.info("Database initialized successfully")
     else:
         logger.warning("Database initialization failed, running with limited functionality")
-    
-    # Load ML model
+
+    # Load ML model (anomaly detection engine)
     try:
         model_manager.load_model()
     except Exception as e:
         logger.warning(f"Model not available at startup: {e}")
+
+    # ------------------------------------------------------------------
+    # Register detection engines in the health-check registry
+    # ------------------------------------------------------------------
+    engine_registry.register(
+        "anomaly_detection",
+        loaded=model_manager.initialized,
+        metadata={"model_version": getattr(model_manager.model, "__version__", "unknown")},
+    )
+    engine_registry.register(
+        "signature_detection",
+        loaded=False,
+        metadata={"rules_count": None},
+    )
+    engine_registry.register(
+        "behavioral_analysis",
+        loaded=False,
+        metadata={"profiles_count": None},
+    )
+    engine_registry.register(
+        "threat_intelligence",
+        loaded=False,
+        metadata={"iocs_count": None},
+    )
 
 
 @app.on_event("shutdown")

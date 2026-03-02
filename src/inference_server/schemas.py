@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 
 class PredictionRequest(BaseModel):
@@ -87,8 +87,7 @@ class PredictionRequest(BaseModel):
     # Optional metadata for observability
     src_ip: Optional[str] = Field(None, alias="src_ip")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # Alert and Incident Schemas
@@ -106,9 +105,9 @@ class AlertResponse(BaseModel):
     incident_id: Optional[int]
     notes: Optional[str]
     
-    class Config:
-        from_attributes = True
-        json_schema_extra = {
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
             "example": {
                 "id": 1,
                 "attack_type": "DDoS",
@@ -119,9 +118,10 @@ class AlertResponse(BaseModel):
                 "prediction_score": 0.95,
                 "acknowledged": False,
                 "incident_id": None,
-                "notes": None
+                "notes": None,
             }
-        }
+        },
+    )
 
 
 class AlertUpdate(BaseModel):
@@ -143,8 +143,7 @@ class IncidentResponse(BaseModel):
     resolved_at: Optional[str]
     notes: Optional[str]
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class IncidentCreate(BaseModel):

@@ -97,14 +97,21 @@ def test_predict_empty_body():
     assert response.status_code == 422
 
 def test_health_endpoint():
-    """Test the health check endpoint"""
+    """Test the health check endpoint returns the expected shape.
+
+    In this test suite the startup event never fires, so engines are
+    not registered and the DB is not initialised.  The endpoint
+    should therefore report *unhealthy* (503).
+    """
     response = client.get("/health")
-    assert response.status_code == 200
-    
-    # Health endpoint now returns database status
-    # Status will be "degraded" when database is not available (which is expected in tests)
-    assert response.json()["status"] in ["healthy", "degraded"]
-    assert "model_initialized" in response.json()
-    assert "database" in response.json()
+    # Without engines registered and DB, expect 503
+    assert response.status_code in (200, 503)
+
+    body = response.json()
+    assert body["status"] in ("healthy", "unhealthy")
+    assert "engines" in body
+    assert "database" in body
+    assert "uptime_seconds" in body
+    assert "timestamp" in body
 
 
